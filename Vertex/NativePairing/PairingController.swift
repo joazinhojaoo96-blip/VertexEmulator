@@ -5,7 +5,7 @@ import StikPairFFI
 import UserNotifications
 
 @MainActor
-final class PairingController: ObservableObject {
+final class PairingController: NSObject, ObservableObject {
 
     static let shared = PairingController()
     static let taskIdentifier = (Bundle.main.bundleIdentifier ?? "com.vertex.emulator") + ".pairing"
@@ -55,7 +55,8 @@ final class PairingController: ObservableObject {
         }
     }
 
-    private init() {
+    private override init() {
+        super.init()
         discoverySubscription = appleTVDiscovery.$devices
             .sink { [weak self] devices in self?.appleTVs = devices }
     }
