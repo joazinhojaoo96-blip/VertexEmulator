@@ -16,6 +16,10 @@
     <string>1</string>
     <key>NSLocalNetworkUsageDescription</key>
     <string>O Vertex usa a rede local para localizar e parear com seu Vertex Runner.</string>
+    <key>NSBonjourServices</key>
+    <array>
+        <string>_vertex-runner._tcp</string>
+    </array>
     <key>LSSupportsOpeningDocumentsInPlace</key>
     <true/>
     <key>UIFileSharingEnabled</key>

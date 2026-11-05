@@ -1,16 +1,28 @@
 # Vertex
 
-Projeto SwiftUI compacto: três arquivos Swift, um catálogo de assets e o ícone
-neon violeta fornecido.
+Aplicativo iOS SwiftUI e companheiro Vertex Runner para Windows.
 
-- **Programas**: importa um `.exe` e mostra o cartão do programa.
-- **Baixar dependências**: estado visual de preparação.
-- **Iniciar**: disponível depois do **Pair Vertex**.
-- **Pair Vertex**: fluxo de pareamento por código.
+## Pair Vertex (pareamento real na rede local)
 
-O projeto usa apenas permissões públicas necessárias: importação de arquivos e
-acesso à rede local para localizar o Vertex Runner. O limite de memória e a
-execução de código são controlados pelo iOS; não existe entitlement público de
-"raw memory" ou memória ilimitada para aplicativos iPhone.
+1. No Windows, instale Python 3 e abra a pasta `VertexRunner`.
+2. Execute:
+   ```powershell
+   py -m pip install -r requirements.txt
+   py VertexRunner.py
+   ```
+3. Autorize Python no Firewall do Windows para redes privadas, se solicitado.
+4. No iPhone e no Windows, conecte-se à mesma rede Wi-Fi.
+5. Abra Vertex > Pair Vertex, selecione o computador encontrado e digite o código de 6 dígitos mostrado no Windows.
 
-Abra `project.yml` com XcodeGen em um Mac para gerar o projeto Xcode.
+O iOS perguntará se o Vertex pode encontrar dispositivos na rede local. Permita para usar a descoberta Bonjour.
+
+## Modo Desenvolvedor
+
+O iOS não permite que um app de terceiros ative Modo Desenvolvedor nem navegue diretamente até essa seção protegida. A ativação deve ser feita manualmente em Ajustes > Privacidade e Segurança > Modo Desenvolvedor.
+
+## Limitações atuais
+
+- O pareamento valida o código com o Vertex Runner por conexão TCP na rede local.
+- A importação de .exe apenas guarda/mostra o arquivo no app. iOS não executa executáveis Windows nativamente.
+- Os botões de preparação e início ainda são protótipos; o pareamento não significa que a execução remota esteja implementada.
+- Use apenas em uma rede privada e confiável.

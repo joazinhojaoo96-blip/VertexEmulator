@@ -1,9 +1,9 @@
 import SwiftUI
 import UniformTypeIdentifiers
+import Network
 
 struct WindowsProgram: Identifiable, Hashable {
     enum State: String { case imported = "Importado", preparing = "Preparando", ready = "Pronto", running = "Em execução" }
-
     let id = UUID()
     let name: String
     var state: State
@@ -15,6 +15,7 @@ struct ContentView: View {
     @State private var showingImporter = false
     @State private var showingPair = false
     @State private var paired = false
+    @State private var runnerName = ""
 
     var body: some View {
         TabView {
@@ -43,7 +44,7 @@ struct ContentView: View {
             VStack(spacing: 18) {
                 Image("VertexMark").resizable().scaledToFit().frame(width: 112, height: 112)
                 Text(paired ? "Vertex conectado" : "Conecte seu Vertex Runner").font(.title3.bold())
-                Text(paired ? "Pronto para abrir sessões Windows." : "Pair Vertex conecta este iPhone ao seu runner.")
+                Text(paired ? "Conectado a \(runnerName).": "Encontre o Runner no Windows pela rede Wi-Fi local.")
                     .foregroundStyle(.secondary).multilineTextAlignment(.center).padding(.horizontal, 32)
                 Button(paired ? "Conectado" : "Pair Vertex") { showingPair = true }
                     .buttonStyle(.borderedProminent).controlSize(.large)
@@ -62,13 +63,14 @@ struct ContentView: View {
                 selectedProgram = updated
             }
         }
-        .sheet(isPresented: $showingPair) { PairSheet(isPaired: $paired) }
+        .sheet(isPresented: $showingPair) {
+            PairSheet(isPaired: $paired, runnerName: $runnerName)
+        }
     }
 }
 
 private struct ProgramRow: View {
     let program: WindowsProgram
-
     var body: some View {
         HStack(spacing: 13) {
             Image("VertexMark").resizable().scaledToFit().frame(width: 52, height: 52)
@@ -87,7 +89,6 @@ private struct ProgramSheet: View {
     let paired: Bool
     @State var program: WindowsProgram
     let onChange: (WindowsProgram) -> Void
-
     var body: some View {
         NavigationStack {
             VStack(spacing: 22) {
@@ -107,7 +108,6 @@ private struct ProgramSheet: View {
             .toolbar { Button("Fechar") { dismiss() } }
         }
     }
-
     private func prepare() {
         program.state = .preparing
         onChange(program)
@@ -122,20 +122,126 @@ private struct ProgramSheet: View {
 private struct PairSheet: View {
     @Environment(\.dismiss) private var dismiss
     @Binding var isPaired: Bool
+    @Binding var runnerName: String
     @State private var code = ""
+    @State private var runners: [NWBrowser.Result] = []
+    @State private var selected: NWBrowser.Result?
+    @State private var browser: NWBrowser?
+    @State private var connection: NWConnection?
+    @State private var status = "Procurando Vertex Runner na rede local..."
+    @State private var busy = false
 
     var body: some View {
         NavigationStack {
             Form {
-                Section("Pair Vertex") {
-                    Text("Digite o código do seu Vertex Runner.")
-                    TextField("Código", text: $code).textInputAutocapitalization(.characters).autocorrectionDisabled()
+                Section("1. Inicie no Windows") {
+                    Text("Execute o arquivo VertexRunner.py no computador. O iPhone e o Windows precisam estar na mesma rede Wi-Fi.")
+                    Text("O Runner exibirá um código de 6 dígitos.")
+                        .font(.caption).foregroundStyle(.secondary)
                 }
-                Button("Conectar") { isPaired = !code.isEmpty; if isPaired { dismiss() } }.disabled(code.isEmpty)
+                Section("2. Computador encontrado") {
+                    if runners.isEmpty {
+                        Text("Procurando...").foregroundStyle(.secondary)
+                    } else {
+                        ForEach(Array(runners.enumerated()), id: \.offset) { item in
+                            let result = item.element
+                            Button {
+                                selected = result
+                            } label: {
+                                HStack {
+                                    Text(result.endpoint.debugDescription)
+                                    Spacer()
+                                    if selected?.endpoint.debugDescription == result.endpoint.debugDescription {
+                                        Image(systemName: "checkmark").foregroundStyle(.purple)
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+                Section("3. Código de pareamento") {
+                    TextField("Código de 6 dígitos", text: $code)
+                        .keyboardType(.numberPad)
+                    Button(busy ? "Conectando..." : "Conectar") { pair() }
+                        .disabled(busy || selected == nil || code.count != 6)
+                }
+                Section("Status") {
+                    Text(status).font(.footnote)
+                }
+                Section("Modo Desenvolvedor do iPhone") {
+                    Text("O iOS não permite que aplicativos ativem esse modo automaticamente. Ative manualmente em Ajustes → Privacidade e Segurança → Modo Desenvolvedor e reinicie o iPhone se solicitado.")
+                        .font(.footnote)
+                }
             }
             .navigationTitle("Pair Vertex")
-            .toolbar { Button("Cancelar") { dismiss() } }
+            .toolbar { Button("Fechar") { browser?.cancel(); dismiss() } }
+            .onAppear { startDiscovery() }
+            .onDisappear { browser?.cancel(); connection?.cancel() }
         }
+    }
+
+    private func startDiscovery() {
+        let b = NWBrowser(for: .bonjour(type: "_vertex-runner._tcp", domain: "local."), using: .tcp)
+        browser = b
+        b.browseResultsChangedHandler = { results, _ in
+            DispatchQueue.main.async {
+                runners = Array(results)
+                if selected == nil { selected = results.first }
+                status = results.isEmpty ? "Nenhum Runner encontrado. Confira a rede e o firewall do Windows." : "Runner encontrado. Digite o código mostrado no Windows."
+            }
+        }
+        b.stateUpdateHandler = { state in
+            if case .failed(let error) = state {
+                DispatchQueue.main.async { status = "Falha na descoberta: \(error.localizedDescription)" }
+            }
+        }
+        b.start(queue: .main)
+    }
+
+    private func pair() {
+        guard let selected else { return }
+        busy = true
+        status = "Validando código..."
+        let conn = NWConnection(to: selected.endpoint, using: .tcp)
+        connection = conn
+        conn.stateUpdateHandler = { state in
+            switch state {
+            case .ready:
+                let payload = try? JSONSerialization.data(withJSONObject: ["code": code])
+                guard let payload else { return }
+                let body = "POST /pair HTTP/1.1\r\nHost: vertex-runner\r\nContent-Type: application/json\r\nContent-Length: \(payload.count)\r\nConnection: close\r\n\r\n"
+                conn.send(content: Data(body.utf8) + payload, completion: .contentProcessed { error in
+                    if let error {
+                        DispatchQueue.main.async { busy = false; status = "Falha ao enviar: \(error.localizedDescription)" }
+                        conn.cancel()
+                    } else {
+                        conn.receive(minimumIncompleteLength: 1, maximumLength: 8192) { data, _, _, receiveError in
+                            let response = data.flatMap { String(data: $0, encoding: .utf8) } ?? ""
+                            DispatchQueue.main.async {
+                                busy = false
+                                if response.contains("200 OK") && response.contains("\"ok\": true") {
+                                    isPaired = true
+                                    runnerName = selected.endpoint.debugDescription
+                                    status = "Pareamento concluído!"
+                                    conn.cancel()
+                                    dismiss()
+                                } else if response.contains("401") {
+                                    status = "Código incorreto. Confira o código no Windows."
+                                } else {
+                                    status = receiveError.map { "Erro de conexão: \($0.localizedDescription)" } ?? "O Runner recusou o pareamento. Tente novamente."
+                                }
+                            }
+                            conn.cancel()
+                        }
+                    }
+                })
+            case .failed(let error):
+                DispatchQueue.main.async { busy = false; status = "Não foi possível conectar: \(error.localizedDescription)" }
+                conn.cancel()
+            default: break
+            }
+        }
+        conn.start(queue: .main)
     }
 }
 
