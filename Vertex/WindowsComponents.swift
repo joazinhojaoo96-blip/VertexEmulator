@@ -74,13 +74,21 @@ final class ComponentDownloadManager: ObservableObject {
                 throw DownloadError.httpStatus(http.statusCode)
             }
 
+            let finalHost = response.url?.host?.lowercased() ?? ""
+            guard finalHost == "microsoft.com" || finalHost.hasSuffix(".microsoft.com") else {
+                throw DownloadError.untrustedSource
+            }
+
             let destination = directory.appendingPathComponent(component.fileName)
             try? FileManager.default.removeItem(at: destination)
             try FileManager.default.moveItem(at: temporaryURL, to: destination)
 
             let attributes = try FileManager.default.attributesOfItem(atPath: destination.path)
             let byteCount = (attributes[.size] as? NSNumber)?.intValue ?? 0
-            guard byteCount > 0 else { throw DownloadError.emptyFile }
+            guard byteCount > 2 else { throw DownloadError.emptyFile }
+            let signature = try Data(contentsOf: destination, options: .mappedIfSafe).prefix(2)
+            guard signature == Data([0x4D, 0x5A]) else { throw DownloadError.invalidInstaller }
+
             states[component.id] = .downloaded(destination)
         } catch {
             states[component.id] = .failed(error.localizedDescription)
@@ -90,11 +98,15 @@ final class ComponentDownloadManager: ObservableObject {
     enum DownloadError: LocalizedError {
         case httpStatus(Int)
         case emptyFile
+        case untrustedSource
+        case invalidInstaller
 
         var errorDescription: String? {
             switch self {
             case .httpStatus(let code): return "O servidor respondeu HTTP \(code)."
             case .emptyFile: return "O arquivo baixado está vazio."
+            case .untrustedSource: return "O download não terminou em um domínio oficial da Microsoft."
+            case .invalidInstaller: return "O arquivo recebido não parece ser um instalador Windows válido."
             }
         }
     }

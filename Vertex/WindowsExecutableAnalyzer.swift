@@ -115,9 +115,16 @@ enum WindowsExecutableAnalyzer {
             name.hasPrefix("api-ms-win-crt")
         }
         if needsVC {
-            recommendations.append(architecture.contains("32") ? "Visual C++ Redistributable (x86)" :
-                                    architecture.contains("64") ? "Visual C++ Redistributable (x64)" :
-                                    "Visual C++ Redistributable (x86 e x64)")
+            switch architecture {
+            case "x86 (32 bits)":
+                recommendations.append("Visual C++ Redistributable (x86)")
+            case "x64 (64 bits)":
+                recommendations.append("Visual C++ Redistributable (x64)")
+            case "ARM64":
+                notes.append("O executável é ARM64; o motor x86/x64 planejado para o Vertex não declara suporte a esse formato.")
+            default:
+                recommendations.append("Visual C++ Redistributable (x86 e x64)")
+            }
         }
 
         if lowerImports.contains("hostfxr.dll") || lowerImports.contains("coreclr.dll") {
