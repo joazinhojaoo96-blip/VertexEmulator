@@ -31,19 +31,11 @@ final class PairingController: ObservableObject {
     @Published var phase: Phase = .idle
     @Published private(set) var appleTVs: [AppleTVDevice] = []
 
-    @Published var keepAliveAudio: Bool = UserDefaults.standard.bool(forKey: "keepAlive.audio") {
-        didSet { UserDefaults.standard.set(keepAliveAudio, forKey: "keepAlive.audio") }
-    }
-    @Published var keepAliveLocation: Bool = UserDefaults.standard.bool(forKey: "keepAlive.location") {
-        didSet { UserDefaults.standard.set(keepAliveLocation, forKey: "keepAlive.location") }
-    }
-
     private let bindAddress = "0.0.0.0"
     private let hostName = "Vertex"
 
     private var netService: NetService?
     private let localNetwork = LocalNetworkAuthorization()
-    private let keepAlive = KeepAlive()
     private let appleTVDiscovery = AppleTVDiscovery()
     private var discoverySubscription: AnyCancellable?
     private var appleTVSession: OpaquePointer?
@@ -85,13 +77,9 @@ final class PairingController: ObservableObject {
 
         UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound]) { _, _ in }
 
-        if keepAliveAudio { keepAlive.startAudio() }
-        if keepAliveLocation { keepAlive.startLocation() }
-
         Task {
             guard await localNetwork.request() else {
-                keepAlive.stopAll()
-                phase = .failed("Local Network permission is required. Enable it in Settings › StikPair › Local Network, then try again.")
+                phase = .failed("A permissão de Rede Local é necessária. Ative-a em Ajustes > Apps > Vertex > Rede Local e tente novamente.")
                 return
             }
             submitBackgroundTask()
@@ -105,7 +93,7 @@ final class PairingController: ObservableObject {
             let authorized = await localNetwork.request()
             guard case .browsingAppleTV = phase else { return }
             guard authorized else {
-                phase = .failed("Local Network permission is required. Enable it in Settings › StikPair › Local Network, then try again.")
+                phase = .failed("A permissão de Rede Local é necessária. Ative-a em Ajustes > Apps > Vertex > Rede Local e tente novamente.")
                 return
             }
             appleTVDiscovery.start()
@@ -195,8 +183,8 @@ final class PairingController: ObservableObject {
     private func submitBackgroundTask() {
         let request = BGContinuedProcessingTaskRequest(
             identifier: PairingController.taskIdentifier,
-            title: "StikPair",
-            subtitle: "Waiting for a device to connect…")
+            title: "Vertex",
+            subtitle: "Waiting for a device to connectâ€¦")
         request.strategy = .queue
 
         do {
@@ -220,7 +208,6 @@ final class PairingController: ObservableObject {
         task?.progress.completedUnitCount = 5
         task?.expirationHandler = { [weak self] in
             guard let self else { return }
-            self.keepAlive.stopAll()
             self.finishTask(success: false)
             if self.isRunning {
                 self.phase = .failed("Background time expired before a device connected. Tap Pair to try again.")
@@ -263,7 +250,6 @@ final class PairingController: ObservableObject {
 
             DispatchQueue.main.async {
                 self.stopAdvertising()
-                self.keepAlive.stopAll()
                 self.pairingStarted = false
                 self.phase = outcome
                 if case .success = outcome {
@@ -298,11 +284,7 @@ final class PairingController: ObservableObject {
         phase = .showPin(pin)
         bgTask?.progress.completedUnitCount = 50
         bgTask?.updateTitle("Vertex", subtitle: "Enter code \(pin) in Developer Mode")
-        if keepAliveAudio || keepAliveLocation {
-            notify(id: "vertex.pin",
-                   title: "Vertex pairing code",
-                   body: "Enter \(pin) in Developer Mode on this iPhone.")
-        }
+        notify(id: "vertex.pin", title: "Vertex pairing code", body: "Digite o PIN \(pin) no Modo Desenvolvedor deste iPhone.")
     }
 
     fileprivate func presentAppleTVPin() {

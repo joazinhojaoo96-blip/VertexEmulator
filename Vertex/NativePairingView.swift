@@ -28,21 +28,19 @@ struct NativePairingView: View {
         switch controller.phase {
         case .idle:
             VStack(spacing: 12) {
-                Text("O Vertex anuncia o serviço de pareamento do próprio iPhone. Nenhum computador externo é necessário.")
+                Text("O Vertex anuncia o serviÃ§o de pareamento do prÃ³prio iPhone. Nenhum computador externo Ã© necessÃ¡rio.")
                     .foregroundStyle(.secondary).multilineTextAlignment(.center)
-                Toggle("Manter sessão com áudio em segundo plano", isOn: $controller.keepAliveAudio)
-                Toggle("Manter sessão com localização", isOn: $controller.keepAliveLocation)
                 Button("Iniciar pareamento") { controller.start() }.buttonStyle(.borderedProminent)
             }
         case .waiting:
             VStack(alignment: .leading, spacing: 14) {
-                ProgressView("Aguardando confirmação nos Ajustes…")
+                ProgressView("Aguardando confirmaÃ§Ã£o nos Ajustesâ€¦")
                 Text("No mesmo iPhone:").font(.headline)
                 step(1, "Abra Ajustes.")
-                step(2, "Entre em Privacidade e Segurança.")
+                step(2, "Entre em Privacidade e SeguranÃ§a.")
                 step(3, "Abra Modo Desenvolvedor.")
-                step(4, "Toque em “Pair with Vertex” e informe o PIN exibido aqui.")
-                Text("Mantenha o Vertex aberto até o iOS concluir o pareamento.")
+                step(4, "Toque em â€œPair with Vertexâ€ e informe o PIN exibido aqui.")
+                Text("Mantenha o Vertex aberto atÃ© o iOS concluir o pareamento.")
                     .font(.caption).foregroundStyle(.secondary)
             }
         case .showPin(let pin):
@@ -52,14 +50,14 @@ struct NativePairingView: View {
                     .monospacedDigit().tracking(6).textSelection(.enabled)
                     .padding(.horizontal, 24).padding(.vertical, 14)
                     .background(.thinMaterial, in: Capsule())
-                ProgressView("Aguardando o iOS…")
+                ProgressView("Aguardando o iOSâ€¦")
             }
         case .success(let device):
             VStack(spacing: 14) {
-                Label("Pareamento concluído", systemImage: "checkmark.seal.fill")
+                Label("Pareamento concluÃ­do", systemImage: "checkmark.seal.fill")
                     .font(.headline).foregroundStyle(.green)
                 if !device.name.isEmpty {
-                    Text("\(device.name) · \(device.model)")
+                    Text("\(device.name) Â· \(device.model)")
                         .font(.subheadline).foregroundStyle(.secondary)
                 }
                 ShareLink(item: URL(fileURLWithPath: device.pairingFilePath)) {
@@ -82,7 +80,7 @@ struct NativePairingView: View {
         default:
             VStack(spacing: 12) {
                 ProgressView()
-                Text("Processando pareamento…").foregroundStyle(.secondary)
+                Text("Processando pareamentoâ€¦").foregroundStyle(.secondary)
             }
         }
     }
