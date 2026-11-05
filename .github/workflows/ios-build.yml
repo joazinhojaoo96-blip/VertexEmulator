@@ -30,13 +30,14 @@ jobs:
         run: |
           rustc --version
           cargo --version
-          rustup target add aarch64-apple-ios aarch64-apple-ios-sim
+          rustup target add aarch64-apple-ios aarch64-apple-ios-sim x86_64-apple-ios
 
       - name: Build native pairing Rust framework
         run: |
           chmod +x build-rust.sh
           ./build-rust.sh
           test -d StikPairFFI.xcframework
+          lipo -info build/libstikpair_ffi-simulator.a
 
       - name: Generate Xcode project
         run: xcodegen generate
