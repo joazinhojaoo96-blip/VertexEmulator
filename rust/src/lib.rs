@@ -15,6 +15,7 @@ use idevice::remote_pairing::{
     PairableHost, PairableHostInfo, RemotePairingClient, RpPairingFile, RpPairingSocket,
 };
 use tokio::net::{TcpListener, TcpStream};
+use tokio::sync::oneshot;
 
 pub type StikPairReadyCb = Option<
     extern "C" fn(
@@ -29,6 +30,11 @@ pub type StikPairReadyCb = Option<
 
 pub type StikPairPinCb = Option<extern "C" fn(pin: *const c_char, ctx: *mut c_void)>;
 pub type StikPairAppleTvPinCb = Option<extern "C" fn(ctx: *mut c_void)>;
+
+#[repr(C)]
+pub struct StikPairHostSession {
+    cancel_sender: Mutex<Option<oneshot::Sender<()>>>,
+}
 
 #[repr(C)]
 pub struct StikPairAppleTvSession {
@@ -80,7 +86,31 @@ unsafe fn opt_str(p: *const c_char, default: &str) -> String {
 }
 
 #[no_mangle]
+pub extern "C" fn stikpair_host_session_new() -> *mut StikPairHostSession {
+    Box::into_raw(Box::new(StikPairHostSession {
+        cancel_sender: Mutex::new(None),
+    }))
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn stikpair_host_session_cancel(session: *mut StikPairHostSession) {
+    if !session.is_null() {
+        if let Some(sender) = (*session).cancel_sender.lock().unwrap().take() {
+            let _ = sender.send(());
+        }
+    }
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn stikpair_host_session_free(session: *mut StikPairHostSession) {
+    if !session.is_null() {
+        drop(Box::from_raw(session));
+    }
+}
+
+#[no_mangle]
 pub unsafe extern "C" fn stikpair_run_host(
+    session: *mut StikPairHostSession,
     bind_addr: *const c_char,
     port: u16,
     name: *const c_char,
@@ -91,10 +121,13 @@ pub unsafe extern "C" fn stikpair_run_host(
     ctx: *mut c_void,
     out: *mut StikPairResult,
 ) -> i32 {
-    if out.is_null() {
+    if out.is_null() || session.is_null() {
         return 2;
     }
     *out = StikPairResult::empty();
+
+    let (cancel_tx, cancel_rx) = oneshot::channel();
+    *(*session).cancel_sender.lock().unwrap() = Some(cancel_tx);
 
     let bind_addr = opt_str(bind_addr, "0.0.0.0");
     let name = opt_str(name, "StikPair");
@@ -117,7 +150,7 @@ pub unsafe extern "C" fn stikpair_run_host(
         }
     };
 
-    match rt.block_on(run(bind_addr, port, name, model, out_path, cbs)) {
+    match rt.block_on(run(bind_addr, port, name, model, out_path, cbs, cancel_rx)) {
         Ok(res) => {
             (*out).device_name = cstr(res.name);
             (*out).device_model = cstr(res.model);
@@ -256,6 +289,7 @@ async fn run(
     model: String,
     out_path: String,
     cbs: Callbacks,
+    mut cancel: oneshot::Receiver<()>,
 ) -> Result<Paired, String> {
     // Bind first so we can advertise the real port.
     let ip: IpAddr = bind_addr
@@ -280,10 +314,10 @@ async fn run(
     emit_ready(&cbs, &service_identifier, port, &host_info);
 
     // Wait for a device to connect and drive pairing.
-    let (stream, _peer) = listener
-        .accept()
-        .await
-        .map_err(|e| format!("accept failed: {e}"))?;
+    let (stream, _peer) = tokio::select! {
+        result = listener.accept() => result.map_err(|e| format!("accept failed: {e}"))?,
+        _ = &mut cancel => return Err("Pairing advertisement was cancelled".to_string()),
+    };
 
     let socket = RpPairingSocket::new_device(stream);
     let mut host = PairableHost::new(socket, host_info);

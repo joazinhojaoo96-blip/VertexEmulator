@@ -36,6 +36,8 @@ final class PairingController: NSObject, ObservableObject {
     private let hostName = "Vertex"
 
     private var netService: NetService?
+    private var hostSession: OpaquePointer?
+    private var pendingHostFailure: String?
     private let localNetwork = LocalNetworkAuthorization()
     private let appleTVDiscovery = AppleTVDiscovery()
     private var discoverySubscription: AnyCancellable?
@@ -182,6 +184,25 @@ final class PairingController: NSObject, ObservableObject {
         phase = .idle
     }
 
+    func retry() {
+        guard case .failed = phase else { return }
+        if let session = hostSession {
+            stikpair_host_session_cancel(session)
+        }
+        Task { @MainActor [weak self] in
+            guard let self else { return }
+            for _ in 0..<30 {
+                if !self.pairingStarted {
+                    self.reset()
+                    self.start()
+                    return
+                }
+                try? await Task.sleep(nanoseconds: 100_000_000)
+            }
+            self.phase = .failed("A sessao anterior ainda esta sendo encerrada. Aguarde alguns segundos e tente novamente.")
+        }
+    }
+
     private func submitBackgroundTask() {
         let request = BGContinuedProcessingTaskRequest(
             identifier: PairingController.taskIdentifier,
@@ -219,17 +240,26 @@ final class PairingController: NSObject, ObservableObject {
         let bind = bindAddress
         let name = hostName
         let outPath = Self.pairingFilePath()
+        guard let session = stikpair_host_session_new() else {
+            pairingStarted = false
+            phase = .failed("Nao foi possivel criar a sessao de pareamento.")
+            return
+        }
+        hostSession = session
+        pendingHostFailure = nil
+        let sessionBits = UInt(bitPattern: session)
         let ctxBits = UInt(bitPattern: Unmanaged.passRetained(self).toOpaque())
 
         DispatchQueue.global(qos: .userInitiated).async {
             let ctx = UnsafeMutableRawPointer(bitPattern: ctxBits)
+            let hostSession = OpaquePointer(bitPattern: sessionBits)!
             var result = StikPairResult()
             let rc = bind.withCString { bindC in
                 name.withCString { nameC in
                     "Mac17,7".withCString { modelC in
                         outPath.withCString { outC in
                             stikpair_run_host(
-                                bindC, 0, nameC, modelC, outC,
+                                hostSession, bindC, 0, nameC, modelC, outC,
                                 readyCallback, pinCallback, ctx, &result)
                         }
                     }
@@ -252,8 +282,15 @@ final class PairingController: NSObject, ObservableObject {
 
             DispatchQueue.main.async {
                 self.stopAdvertising()
+                if self.hostSession == hostSession { self.hostSession = nil }
+                stikpair_host_session_free(hostSession)
                 self.pairingStarted = false
-                self.phase = outcome
+                if let failure = self.pendingHostFailure {
+                    self.phase = .failed(failure)
+                    self.pendingHostFailure = nil
+                } else {
+                    self.phase = outcome
+                }
                 if case .success = outcome {
                     self.bgTask?.progress.completedUnitCount = 100
                     self.postReturnNotification()

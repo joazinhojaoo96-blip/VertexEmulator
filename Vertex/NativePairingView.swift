@@ -135,8 +135,7 @@ struct NativePairingView: View {
         case .failed(let message):
             statusCard(symbol: "exclamationmark.triangle.fill", title: "Não foi possível parear", detail: message, color: .red) {
                 Button {
-                    controller.reset()
-                    controller.start()
+                    controller.retry()
                 } label: {
                     Label("Tentar novamente", systemImage: "arrow.clockwise")
                         .frame(maxWidth: .infinity)

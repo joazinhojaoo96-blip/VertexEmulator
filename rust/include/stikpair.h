@@ -31,7 +31,14 @@ typedef struct {
     char *host_alt_irk_hex;
 } StikPairResult;
 
-int32_t stikpair_run_host(const char *bind_addr,
+typedef struct StikPairHostSession StikPairHostSession;
+
+StikPairHostSession *stikpair_host_session_new(void);
+void stikpair_host_session_cancel(StikPairHostSession *session);
+void stikpair_host_session_free(StikPairHostSession *session);
+
+int32_t stikpair_run_host(StikPairHostSession *session,
+                          const char *bind_addr,
                           uint16_t port,
                           const char *name,
                           const char *model,
