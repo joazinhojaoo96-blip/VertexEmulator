@@ -52,11 +52,11 @@ struct ContentView: View {
         }
         .tint(.purple)
         .fileImporter(isPresented: $showingImporter, allowedContentTypes: [.windowsExecutable]) { result in
-            guard case let .success(urls) = result, let file = urls.first else { return }
+            guard case let .success(file) = result else { return }
             programs.insert(WindowsProgram(name: file.deletingPathExtension().lastPathComponent, state: .imported), at: 0)
         }
         .sheet(item: $selectedProgram) { program in
-            ProgramSheet(program: program, paired: paired) { updated in
+            ProgramSheet(paired: paired, program: program) { updated in
                 guard let index = programs.firstIndex(where: { $0.id == updated.id }) else { return }
                 programs[index] = updated
                 selectedProgram = updated
