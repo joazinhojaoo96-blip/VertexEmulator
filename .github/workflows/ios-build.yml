@@ -13,7 +13,7 @@ permissions:
 jobs:
   build:
     runs-on: macos-latest
-    timeout-minutes: 20
+    timeout-minutes: 30
 
     steps:
       - name: Checkout
@@ -31,12 +31,39 @@ jobs:
         run: xcodegen generate
 
       - name: Build for iOS Simulator
-        run: >-
-          xcodebuild
-          -project Vertex.xcodeproj
-          -scheme Vertex
-          -configuration Debug
-          -sdk iphonesimulator
-          -destination 'generic/platform=iOS Simulator'
-          CODE_SIGNING_ALLOWED=NO
-          build
+        run: |
+          xcodebuild \
+            -project Vertex.xcodeproj \
+            -scheme Vertex \
+            -configuration Debug \
+            -sdk iphonesimulator \
+            -destination 'generic/platform=iOS Simulator' \
+            CODE_SIGNING_ALLOWED=NO \
+            build
+
+      - name: Archive for physical iPhone (unsigned)
+        run: |
+          xcodebuild \
+            -project Vertex.xcodeproj \
+            -scheme Vertex \
+            -configuration Release \
+            -sdk iphoneos \
+            -destination 'generic/platform=iOS' \
+            -archivePath build/Vertex.xcarchive \
+            CODE_SIGNING_ALLOWED=NO \
+            archive
+
+      - name: Package unsigned IPA
+        run: |
+          mkdir -p Payload
+          cp -R build/Vertex.xcarchive/Products/Applications/Vertex.app Payload/
+          ditto -c -k --sequesterRsrc --keepParent Payload Vertex-unsigned.ipa
+          test -s Vertex-unsigned.ipa
+
+      - name: Upload IPA artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Vertex-unsigned-IPA
+          path: Vertex-unsigned.ipa
+          if-no-files-found: error
+          retention-days: 14
