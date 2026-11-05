@@ -2,7 +2,7 @@ name: iOS Build
 
 on:
   push:
-    branches: [main]
+    branches: [main, "feat/**"]
   pull_request:
     branches: [main]
   workflow_dispatch:
@@ -13,19 +13,31 @@ permissions:
 jobs:
   build:
     runs-on: macos-latest
-    timeout-minutes: 30
-
+    timeout-minutes: 45
     steps:
       - name: Checkout
         uses: actions/checkout@v5
 
+      - name: Show Apple build tools
+        run: |
+          xcodebuild -version
+          xcode-select -p
+
       - name: Install XcodeGen
         run: brew install xcodegen
 
-      - name: Show build tools
+      - name: Install Rust targets
         run: |
-          xcodebuild -version
-          xcodegen --version
+          rustc --version
+          cargo --version
+          rustup target add aarch64-apple-ios aarch64-apple-ios-sim x86_64-apple-ios
+
+      - name: Build native pairing Rust framework
+        run: |
+          chmod +x build-rust.sh
+          ./build-rust.sh
+          test -d StikPairFFI.xcframework
+          lipo -info build/libstikpair_ffi-simulator.a
 
       - name: Generate Xcode project
         run: xcodegen generate
@@ -64,7 +76,7 @@ jobs:
       - name: Upload IPA artifact
         uses: actions/upload-artifact@v4
         with:
-          name: Vertex-unsigned-IPA
+          name: Vertex-native-pairing-IPA
           path: Vertex-unsigned.ipa
           if-no-files-found: error
           retention-days: 14
