@@ -5,6 +5,7 @@ struct WindowsProgram: Identifiable, Hashable {
     enum State: String { case imported = "Importado", preparing = "Preparando", ready = "Pronto", running = "Em execução" }
     let id = UUID()
     let name: String
+    let report: ExecutableReport
     var state: State
 }
 
@@ -23,7 +24,7 @@ struct ContentView: View {
                         ContentUnavailableView {
                             Image("VertexMark").resizable().scaledToFit().frame(width: 72, height: 72)
                         } description: {
-                            Text("Adicione um .exe para aparecer aqui.")
+                            Text("Adicione um arquivo .exe para analisar e adicionar à biblioteca.")
                         } actions: {
                             Button("Adicionar .exe") { showingImporter = true }.buttonStyle(.borderedProminent)
                         }
@@ -35,9 +36,16 @@ struct ContentView: View {
                     }
                 }
                 .navigationTitle("Programas")
-                .toolbar { Button { showingImporter = true } label: { Label("Adicionar", systemImage: "plus.circle.fill") } }
+                .toolbar {
+                    Button { showingImporter = true } label: {
+                        Label("Adicionar", systemImage: "plus.circle.fill")
+                    }
+                }
             }
             .tabItem { Label("Programas", systemImage: "square.grid.2x2.fill") }
+
+            WindowsComponentsView()
+                .tabItem { Label("Componentes", systemImage: "shippingbox.fill") }
 
             VStack(spacing: 18) {
                 Image("VertexMark").resizable().scaledToFit().frame(width: 112, height: 112)
@@ -54,14 +62,15 @@ struct ContentView: View {
         .tint(.purple)
         .fileImporter(isPresented: $showingImporter, allowedContentTypes: [.windowsExecutable]) { result in
             guard case let .success(file) = result else { return }
-            programs.insert(WindowsProgram(name: file.deletingPathExtension().lastPathComponent, state: .imported), at: 0)
+            let report = WindowsExecutableAnalyzer.analyze(file)
+            programs.insert(
+                WindowsProgram(name: file.deletingPathExtension().lastPathComponent,
+                               report: report, state: .imported),
+                at: 0
+            )
         }
         .sheet(item: $selectedProgram) { program in
-            ProgramSheet(paired: paired, program: program) { updated in
-                guard let index = programs.firstIndex(where: { $0.id == updated.id }) else { return }
-                programs[index] = updated
-                selectedProgram = updated
-            }
+            ProgramSheet(program: program)
         }
         .sheet(isPresented: $showingPair) { NativePairingView() }
     }
@@ -69,12 +78,13 @@ struct ContentView: View {
 
 private struct ProgramRow: View {
     let program: WindowsProgram
+
     var body: some View {
         HStack(spacing: 13) {
             Image("VertexMark").resizable().scaledToFit().frame(width: 52, height: 52)
             VStack(alignment: .leading, spacing: 4) {
                 Text(program.name).font(.headline)
-                Text("Executável Windows").font(.caption).foregroundStyle(.secondary)
+                Text(program.report.architecture).font(.caption).foregroundStyle(.secondary)
             }
             Spacer()
             Text(program.state.rawValue).font(.caption.weight(.semibold)).foregroundStyle(.purple)
@@ -84,22 +94,51 @@ private struct ProgramRow: View {
 
 private struct ProgramSheet: View {
     @Environment(\.dismiss) private var dismiss
-    let paired: Bool
-    @State var program: WindowsProgram
-    let onChange: (WindowsProgram) -> Void
+    let program: WindowsProgram
+
     var body: some View {
         NavigationStack {
-            VStack(spacing: 22) {
-                Image("VertexMark").resizable().scaledToFit().frame(width: 112, height: 112)
-                Text(program.name).font(.title2.bold())
-                Text("A execução de programas Windows ainda não está implementada.")
-                    .foregroundStyle(.secondary).multilineTextAlignment(.center)
-                Text(paired ? "O pareamento do iPhone está pronto, mas não executa arquivos .exe." : "Conclua primeiro o pareamento nativo do iPhone.")
-                    .font(.caption).foregroundStyle(.secondary).multilineTextAlignment(.center)
-                Spacer()
+            List {
+                Section("Arquivo") {
+                    LabeledContent("Programa", value: program.name)
+                    LabeledContent("Arquitetura", value: program.report.architecture)
+                    LabeledContent("Bibliotecas importadas", value: "\(program.report.importedLibraries.count)")
+                }
+
+                Section("Dependências identificadas") {
+                    if program.report.recommendations.isEmpty {
+                        Text("Nenhuma dependência conhecida foi detectada.")
+                            .foregroundStyle(.secondary)
+                    } else {
+                        ForEach(program.report.recommendations, id: \.self) { item in
+                            Label(item, systemImage: "shippingbox")
+                        }
+                        Text("Abra a aba Componentes para baixar os pacotes correspondentes.")
+                            .font(.caption).foregroundStyle(.secondary)
+                    }
+                }
+
+                if !program.report.notes.isEmpty {
+                    Section("Observações") {
+                        ForEach(program.report.notes, id: \.self) { note in
+                            Text(note).font(.footnote).foregroundStyle(.secondary)
+                        }
+                    }
+                }
+
+                Section {
+                    Label("Motor Windows ainda não integrado", systemImage: "exclamationmark.triangle.fill")
+                        .font(.headline).foregroundStyle(.orange)
+                    Text("A análise PE e o gerenciador de downloads já estão disponíveis. Para executar o .exe, ainda é necessário integrar Wine + FEX + DXMT/Metal e o suporte JIT.")
+                        .font(.footnote).foregroundStyle(.secondary)
+                    Button {} label: {
+                        Label("Executar", systemImage: "play.fill").frame(maxWidth: .infinity)
+                    }
+                    .disabled(true)
+                }
             }
-            .padding(.top, 34).padding(.horizontal, 24)
-            .navigationTitle("Programa").navigationBarTitleDisplayMode(.inline)
+            .navigationTitle("Detalhes do programa")
+            .navigationBarTitleDisplayMode(.inline)
             .toolbar { Button("Fechar") { dismiss() } }
         }
     }
