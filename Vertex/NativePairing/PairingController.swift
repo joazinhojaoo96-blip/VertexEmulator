@@ -13,6 +13,7 @@ final class PairingController: ObservableObject {
     enum Phase: Equatable {
         case idle
         case waiting
+        case advertising
         case showPin(String)
         case browsingAppleTV
         case enteringAppleTVPin(AppleTVDevice)
@@ -49,7 +50,7 @@ final class PairingController: ObservableObject {
     var isRunning: Bool {
         if pairingStarted { return true }
         switch phase {
-        case .waiting, .showPin, .enteringAppleTVPin, .pairingAppleTV: return true
+        case .waiting, .advertising, .showPin, .enteringAppleTVPin, .pairingAppleTV: return true
         default: return false
         }
     }
@@ -184,7 +185,7 @@ final class PairingController: ObservableObject {
         let request = BGContinuedProcessingTaskRequest(
             identifier: PairingController.taskIdentifier,
             title: "Vertex",
-            subtitle: "Waiting for a device to connectâ€¦")
+            subtitle: "Waiting for a device to connect…")
         request.strategy = .queue
 
         do {
@@ -276,6 +277,7 @@ final class PairingController: ObservableObject {
             name: serviceID,
             port: port)
         service.setTXTRecord(NetService.data(fromTXTRecord: txt))
+        service.delegate = self
         service.publish()
         netService = service
     }
@@ -358,4 +360,22 @@ private let appleTVPinCallback: StikPairAppleTvPinCb = { ctx in
 private func cString(_ ptr: UnsafeMutablePointer<CChar>?) -> String {
     guard let ptr = ptr else { return "" }
     return String(cString: ptr)
+}
+
+extension PairingController: NetServiceDelegate {
+    nonisolated func netServiceDidPublish(_ sender: NetService) {
+        Task { @MainActor in
+            guard self.netService === sender else { return }
+            self.phase = .advertising
+        }
+    }
+
+    nonisolated func netService(_ sender: NetService, didNotPublish errorDict: [String: NSNumber]) {
+        Task { @MainActor in
+            guard self.netService === sender else { return }
+            let code = errorDict[NetService.errorCode]?.intValue ?? -1
+            self.stopAdvertising()
+            self.phase = .failed("O iOS não conseguiu anunciar Pair with Vertex na rede local (erro \(code)). Verifique a permissão de Rede Local e tente novamente.")
+        }
+    }
 }

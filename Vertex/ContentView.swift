@@ -52,14 +52,14 @@ struct ContentView: View {
                 Text(paired ? "iPhone pareado" : "Pareamento do iPhone").font(.title3.bold())
                 Text(paired
                      ? "O pareamento nativo foi concluído neste dispositivo."
-                     : "Pareie este iPhone com o serviço de Modo Desenvolvedor do próprio iOS. Não é necessário um PC externo.")
+                     : "Ative o anúncio local do Vertex e selecione “Pair with Vertex” em Ajustes > Privacidade e Segurança > Modo Desenvolvedor.")
                     .foregroundStyle(.secondary).multilineTextAlignment(.center).padding(.horizontal, 32)
                 Button(paired ? "Ver pareamento" : "Pair Vertex") { showingPair = true }
                     .buttonStyle(.borderedProminent).controlSize(.large)
             }
             .tabItem { Label("Vertex", systemImage: "bolt.horizontal.circle.fill") }
         }
-        .tint(.purple)
+        .tint(.blue)
         .fileImporter(isPresented: $showingImporter, allowedContentTypes: [.windowsExecutable]) { result in
             guard case let .success(file) = result else { return }
             let report = WindowsExecutableAnalyzer.analyze(file)
@@ -87,7 +87,7 @@ private struct ProgramRow: View {
                 Text(program.report.architecture).font(.caption).foregroundStyle(.secondary)
             }
             Spacer()
-            Text(program.state.rawValue).font(.caption.weight(.semibold)).foregroundStyle(.purple)
+            Text(program.state.rawValue).font(.caption.weight(.semibold)).foregroundStyle(.blue)
         }
     }
 }

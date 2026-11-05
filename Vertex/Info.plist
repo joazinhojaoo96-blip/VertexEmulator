@@ -1,4 +1,4 @@
-﻿<?xml version="1.0" encoding="UTF-8"?>
+<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
@@ -9,7 +9,7 @@
     <key>CFBundleShortVersionString</key><string>1.1</string>
     <key>CFBundleVersion</key><string>2</string>
     <key>NSLocalNetworkUsageDescription</key>
-    <string>O Vertex anuncia o serviÃ§o de pareamento local necessÃ¡rio para o Modo Desenvolvedor do iOS.</string>
+    <string>O Vertex anuncia o serviço de pareamento local necessário para o Modo Desenvolvedor do iOS.</string>
     <key>NSBonjourServices</key>
     <array>
         <string>_remotepairing-pairable-host._tcp</string>
