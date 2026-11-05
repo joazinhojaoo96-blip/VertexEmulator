@@ -2,33 +2,32 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-    <key>CFBundleIdentifier</key>
-    <string>$(PRODUCT_BUNDLE_IDENTIFIER)</string>
-    <key>CFBundleExecutable</key>
-    <string>$(EXECUTABLE_NAME)</string>
-    <key>CFBundlePackageType</key>
-    <string>APPL</string>
-    <key>CFBundleDisplayName</key>
-    <string>Vertex</string>
-    <key>CFBundleShortVersionString</key>
-    <string>1.0</string>
-    <key>CFBundleVersion</key>
-    <string>1</string>
+    <key>CFBundleIdentifier</key><string>$(PRODUCT_BUNDLE_IDENTIFIER)</string>
+    <key>CFBundleExecutable</key><string>$(EXECUTABLE_NAME)</string>
+    <key>CFBundlePackageType</key><string>APPL</string>
+    <key>CFBundleDisplayName</key><string>Vertex</string>
+    <key>CFBundleShortVersionString</key><string>1.1</string>
+    <key>CFBundleVersion</key><string>2</string>
     <key>NSLocalNetworkUsageDescription</key>
-    <string>O Vertex usa a rede local para localizar e parear com seu Vertex Runner.</string>
+    <string>O Vertex anuncia o serviço de pareamento local necessário para o Modo Desenvolvedor do iOS.</string>
     <key>NSBonjourServices</key>
     <array>
-        <string>_vertex-runner._tcp</string>
+        <string>_remotepairing-pairable-host._tcp</string>
+        <string>_remotepairing-manual-pairing._tcp</string>
+        <string>_stikpairprobe._tcp</string>
     </array>
-    <key>LSSupportsOpeningDocumentsInPlace</key>
-    <true/>
-    <key>UIFileSharingEnabled</key>
-    <true/>
-    <key>UILaunchScreen</key>
-    <dict/>
+    <key>BGTaskSchedulerPermittedIdentifiers</key>
+    <array><string>$(PRODUCT_BUNDLE_IDENTIFIER).pairing</string></array>
+    <key>UIBackgroundModes</key>
+    <array><string>audio</string><string>location</string></array>
+    <key>NSLocationWhenInUseUsageDescription</key>
+    <string>O Vertex pode usar localização em segundo plano, se você ativar essa opção, para manter a sessão durante a confirmação nos Ajustes.</string>
+    <key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
+    <string>O Vertex pode usar localização em segundo plano, se você ativar essa opção, para manter a sessão durante a confirmação nos Ajustes.</string>
+    <key>LSSupportsOpeningDocumentsInPlace</key><true/>
+    <key>UIFileSharingEnabled</key><true/>
+    <key>UILaunchScreen</key><dict/>
     <key>UIRequiredDeviceCapabilities</key>
-    <array>
-        <string>arm64</string>
-    </array>
+    <array><string>arm64</string></array>
 </dict>
 </plist>

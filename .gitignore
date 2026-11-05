@@ -1,0 +1,6 @@
+/rust/target/
+/StikPairFFI.xcframework/
+/Vertex.xcodeproj/
+/build/
+/Payload/
+/Vertex-unsigned.ipa
