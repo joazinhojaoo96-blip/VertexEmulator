@@ -12,7 +12,7 @@ permissions:
 
 jobs:
   build:
-    runs-on: macos-14
+    runs-on: macos-latest
     timeout-minutes: 20
 
     steps:
@@ -21,6 +21,11 @@ jobs:
 
       - name: Install XcodeGen
         run: brew install xcodegen
+
+      - name: Show build tools
+        run: |
+          xcodebuild -version
+          xcodegen --version
 
       - name: Generate Xcode project
         run: xcodegen generate
