@@ -50,6 +50,7 @@ jobs:
             -sdk iphoneos \
             -destination 'generic/platform=iOS' \
             -archivePath build/Vertex.xcarchive \
+            PRODUCT_BUNDLE_IDENTIFIER=com.vertex.emulator \
             CODE_SIGNING_ALLOWED=NO \
             archive
 
