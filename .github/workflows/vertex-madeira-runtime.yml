@@ -23,8 +23,25 @@ jobs:
         uses: actions/checkout@v5
         with:
           submodules: recursive
-          fetch-depth: 0
+          fetch-depth: 1
 
+      - name: Restore verified runtime and compiler caches
+        uses: actions/cache@v4
+        with:
+          path: |
+            Vendor/Madeira/.runtime-cache
+            Vendor/Madeira/toolchains/llvm-host-build
+            Vendor/Madeira/toolchains/llvm-ios-build
+            Vendor/Madeira/toolchains/llvm-project
+            Vendor/Madeira/build
+            Vendor/Madeira/research/freetype
+            Vendor/Madeira/build/freetype-ios
+          key: vertex-madeira-${{ runner.os }}-xcode26-${{ hashFiles('.gitmodules', 'Vendor/Madeira/.gitmodules', 'Vendor/Madeira/tools/build/runtime-components.json', 'Vendor/Madeira/tools/build/ci-input-key.sh') }}-${{ hashFiles('Vendor/Madeira/**/CMakeLists.txt', 'Vendor/Madeira/**/build.sh', 'Vendor/Madeira/tools/build/*.sh') }}
+          restore-keys:
+            vertex-madeira-${{ runner.os }}-xcode26-
+
+      - name: Enable exact runtime component reuse
+        run: echo "MADEIRA_RUNTIME_REUSE=1" >> "$GITHUB_ENV"
       - name: Show Apple build environment
         run: |
           sw_vers
@@ -48,6 +65,7 @@ jobs:
         working-directory: Vendor/Madeira
         env:
           JOBS: 4
+          MADEIRA_RUNTIME_REUSE: 1
         run: ./tools/build-ipa.sh
 
       - name: Validate resulting IPA
