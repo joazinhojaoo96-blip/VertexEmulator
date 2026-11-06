@@ -10,11 +10,13 @@ struct WindowsProgram: Identifiable, Hashable, Codable {
     let id: UUID
     let name: String
     var state: State
+    var storedFileName: String?
 
-    init(id: UUID = UUID(), name: String, state: State = .imported) {
+    init(id: UUID = UUID(), name: String, state: State = .imported, storedFileName: String? = nil) {
         self.id = id
         self.name = name
         self.state = state
+        self.storedFileName = storedFileName
     }
 }
 
@@ -28,6 +30,7 @@ struct ContentView: View {
     @State private var selectedProgram: WindowsProgram?
     @State private var showingImporter = false
     @State private var showingPair = false
+    @State private var importError: String?
 
     var body: some View {
         TabView {
@@ -109,14 +112,34 @@ struct ContentView: View {
             defer { if granted { url.stopAccessingSecurityScopedResource() } }
             let name = url.deletingPathExtension().lastPathComponent
             guard !programs.contains(where: { $0.name == name }) else { return }
-            programs.insert(WindowsProgram(name: name), at: 0)
-            persistPrograms()
+            do {
+                let folder = try importedFilesDirectory()
+                let destination = folder
+                    .appendingPathComponent(UUID().uuidString)
+                    .appendingPathExtension(url.pathExtension)
+                try FileManager.default.copyItem(at: url, to: destination)
+                programs.insert(
+                    WindowsProgram(name: name, storedFileName: destination.lastPathComponent),
+                    at: 0
+                )
+                persistPrograms()
+            } catch {
+                importError = error.localizedDescription
+            }
         }
         .sheet(item: $selectedProgram) { program in
             ProgramSheet(program: program)
         }
         .sheet(isPresented: $showingPair) {
             PairSheet(isPaired: $paired, runnerName: $runnerName)
+        }
+        .alert("Falha ao importar arquivo", isPresented: Binding(
+            get: { importError != nil },
+            set: { if !$0 { importError = nil } }
+        )) {
+            Button("OK", role: .cancel) { importError = nil }
+        } message: {
+            Text(importError ?? "Não foi possível copiar o arquivo.")
         }
         .onAppear(perform: restorePrograms)
         .onChange(of: scenePhase) { _, phase in
@@ -135,6 +158,13 @@ struct ContentView: View {
         programs = decoded
     }
 
+    private func importedFilesDirectory() throws -> URL {
+        let documents = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
+        let folder = documents.appendingPathComponent("ImportedExecutables", isDirectory: true)
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        return folder
+    }
+
     private func persistPrograms() {
         guard let data = try? JSONEncoder().encode(programs),
               let value = String(data: data, encoding: .utf8) else { return }
@@ -142,6 +172,11 @@ struct ContentView: View {
     }
 
     private func deletePrograms(at offsets: IndexSet) {
+        for index in offsets {
+            guard let fileName = programs[index].storedFileName,
+                  let folder = try? importedFilesDirectory() else { continue }
+            try? FileManager.default.removeItem(at: folder.appendingPathComponent(fileName))
+        }
         programs.remove(atOffsets: offsets)
         persistPrograms()
     }
