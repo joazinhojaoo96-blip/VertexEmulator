@@ -1,0 +1,4 @@
+[submodule "Vendor/Madeira"]
+	path = Vendor/Madeira
+	url = https://github.com/willfaust/Madeira.git
+	branch = main
