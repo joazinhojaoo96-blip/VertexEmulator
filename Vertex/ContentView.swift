@@ -405,7 +405,7 @@ private struct PairSheet: View {
                 DispatchQueue.main.async {
                     guard requestID == attempt else { conn.cancel(); return }
                     busy = false
-                    if response.contains("200 OK") && body.contains("\\"ok\\": true") {
+                    if response.contains("200 OK") && body.contains("\"ok\": true") {
                         isPaired = true
                         runnerName = selected?.endpoint.debugDescription ?? "Vertex Runner"
                         status = "Pareamento concluído."
