@@ -10,26 +10,46 @@ on:
 permissions:
   contents: read
 
-jobs:
-  build:
-    runs-on: macos-latest
-    timeout-minutes: 30
+concurrency:
+  group: vertex-ios-${{ github.ref }}
+  cancel-in-progress: true
 
+jobs:
+  validate:
+    name: Validate sources
+    runs-on: macos-latest
     steps:
       - name: Checkout
         uses: actions/checkout@v5
-
+      - name: Validate Python runner syntax
+        run: python3 -m py_compile VertexRunner/VertexRunner.py
+      - name: Validate plist and entitlements
+        run: |
+          plutil -lint Vertex/Info.plist
+          plutil -lint Vertex/Vertex.entitlements
       - name: Install XcodeGen
         run: brew install xcodegen
+      - name: Generate Xcode project
+        run: xcodegen generate
+      - name: Verify generated scheme
+        run: xcodebuild -list -project Vertex.xcodeproj
 
+  build:
+    name: Build iOS app
+    needs: validate
+    runs-on: macos-latest
+    timeout-minutes: 35
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+      - name: Install XcodeGen
+        run: brew install xcodegen
+      - name: Generate Xcode project
+        run: xcodegen generate
       - name: Show build tools
         run: |
           xcodebuild -version
           xcodegen --version
-
-      - name: Generate Xcode project
-        run: xcodegen generate
-
       - name: Build for iOS Simulator
         run: |
           xcodebuild \
@@ -40,7 +60,6 @@ jobs:
             -destination 'generic/platform=iOS Simulator' \
             CODE_SIGNING_ALLOWED=NO \
             build
-
       - name: Archive for physical iPhone (unsigned)
         run: |
           xcodebuild \
@@ -53,14 +72,12 @@ jobs:
             PRODUCT_BUNDLE_IDENTIFIER=com.vertex.emulator \
             CODE_SIGNING_ALLOWED=NO \
             archive
-
       - name: Package unsigned IPA
         run: |
           mkdir -p Payload
           cp -R build/Vertex.xcarchive/Products/Applications/Vertex.app Payload/
           ditto -c -k --sequesterRsrc --keepParent Payload Vertex-unsigned.ipa
           test -s Vertex-unsigned.ipa
-
       - name: Upload IPA artifact
         uses: actions/upload-artifact@v4
         with:
