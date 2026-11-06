@@ -1,12 +1,13 @@
 import SwiftUI
 import UIKit
+import UniformTypeIdentifiers
 
-/// Honest JIT dashboard. A successful Runner handshake is deliberately not
-/// presented as JIT: the native Remote Pairing + StikJIT helper is a separate
-/// capability and must report a verified debugger result before showing success.
+/// JIT setup dashboard. Pairing-file import is real; JIT is never reported
+/// as enabled until a compatible helper confirms it for a target process.
 struct JITDashboardView: View {
     @State private var toast: Toast?
-    @State private var checkedCompatibility = false
+    @State private var showingPairingImporter = false
+    @State private var pairingFileStored = false
 
     private var supportsOnDevicePairing: Bool {
         if #available(iOS 27.0, *) { return true }
@@ -29,6 +30,7 @@ struct JITDashboardView: View {
                     VStack(alignment: .leading, spacing: 22) {
                         header
                         statusCard
+                        pairingFileCard
                         compatibilityCard
                         requirementsCard
                         safetyNote
@@ -50,14 +52,27 @@ struct JITDashboardView: View {
                 }
             }
         }
+        .fileImporter(
+            isPresented: $showingPairingImporter,
+            allowedContentTypes: [.propertyList],
+            allowsMultipleSelection: false
+        ) { result in
+            switch result {
+            case .success(let url):
+                importPairingFile(from: url)
+            case .failure(let error):
+                showToast(title: "Importação cancelada",
+                          message: error.localizedDescription)
+            }
+        }
+        .onAppear(perform: refreshPairingState)
         .preferredColorScheme(.dark)
     }
 
     private var header: some View {
         VStack(alignment: .leading, spacing: 9) {
             HStack(spacing: 8) {
-                Image(systemName: "bolt.fill")
-                    .foregroundStyle(.cyan)
+                Image(systemName: "bolt.fill").foregroundStyle(.cyan)
                 Text("DEVELOPER TOOLKIT")
                     .font(.caption.weight(.bold))
                     .tracking(1.8)
@@ -66,7 +81,7 @@ struct JITDashboardView: View {
             Text("JIT Engine")
                 .font(.system(size: 36, weight: .bold, design: .rounded))
                 .foregroundStyle(.white)
-            Text("Pareamento nativo e diagnóstico do ambiente de depuração.")
+            Text("Prepare o pareamento e confira o estado do ambiente de depuração.")
                 .font(.subheadline)
                 .foregroundStyle(.white.opacity(0.72))
         }
@@ -99,10 +114,10 @@ struct JITDashboardView: View {
                         .foregroundStyle(.orange)
                 }
                 VStack(alignment: .leading, spacing: 4) {
-                    Text("Aguardando integração nativa")
+                    Text("Aguardando helper StikJIT")
                         .font(.headline)
                         .foregroundStyle(.white)
-                    Text("O Runner conectado não significa que o JIT foi habilitado.")
+                    Text("O arquivo de pareamento é apenas uma credencial. Ele não ativa JIT sozinho.")
                         .font(.caption)
                         .foregroundStyle(.white.opacity(0.68))
                         .fixedSize(horizontal: false, vertical: true)
@@ -110,8 +125,8 @@ struct JITDashboardView: View {
             }
 
             Button {
-                showToast(title: "Diagnóstico ainda não disponível",
-                          message: "O helper nativo StikJIT precisa ser integrado e validado antes de ativar o JIT.")
+                showToast(title: "Helper ainda não integrado",
+                          message: "O Vertex precisa do helper compatível e de uma confirmação real do processo antes de ativar JIT.")
             } label: {
                 HStack {
                     Image(systemName: "stethoscope")
@@ -135,16 +150,70 @@ struct JITDashboardView: View {
         .overlay(RoundedRectangle(cornerRadius: 24).stroke(.white.opacity(0.10), lineWidth: 1))
     }
 
+    private var pairingFileCard: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            sectionTitle("Arquivo de pareamento", icon: "lock.shield")
+            HStack(spacing: 10) {
+                Image(systemName: pairingFileStored ? "checkmark.seal.fill" : "doc.badge.plus")
+                    .font(.title2)
+                    .foregroundStyle(pairingFileStored ? .green : .cyan)
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(pairingFileStored ? "Arquivo guardado no Keychain" : "Nenhum arquivo importado")
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(.white)
+                    Text(pairingFileStored
+                         ? "Plist reconhecido e protegido neste iPhone. A validade para o helper ainda não foi testada."
+                         : "Importe o RPPairing .plist gerado para este dispositivo.")
+                        .font(.caption)
+                        .foregroundStyle(.white.opacity(0.66))
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+
+            Button {
+                showingPairingImporter = true
+            } label: {
+                Label(pairingFileStored ? "Substituir arquivo" : "Importar RPPairing .plist",
+                      systemImage: "square.and.arrow.down")
+                    .frame(maxWidth: .infinity)
+                    .padding(13)
+                    .background(.cyan.opacity(0.16), in: RoundedRectangle(cornerRadius: 13))
+                    .foregroundStyle(.cyan)
+                    .font(.subheadline.weight(.semibold))
+            }
+            .buttonStyle(.plain)
+
+            if pairingFileStored {
+                Button(role: .destructive) {
+                    deletePairingFile()
+                } label: {
+                    Label("Apagar arquivo salvo", systemImage: "trash")
+                        .font(.caption.weight(.semibold))
+                        .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.plain)
+            }
+        }
+        .padding(18)
+        .background(.white.opacity(0.07), in: RoundedRectangle(cornerRadius: 22, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: 22).stroke(.white.opacity(0.08), lineWidth: 1))
+    }
+
     private var compatibilityCard: some View {
         VStack(alignment: .leading, spacing: 13) {
             sectionTitle("Compatibilidade", icon: "iphone")
-            infoRow("Versão do iOS", value: UIDevice.current.systemVersion, symbol: "checkmark.circle.fill", color: .green)
+            infoRow("Versão do iOS", value: UIDevice.current.systemVersion,
+                    symbol: "checkmark.circle.fill", color: .green)
             infoRow("Pareamento no próprio iPhone",
-                    value: supportsOnDevicePairing ? "Disponível a partir do iOS 27" : "Requer iOS 27 ou posterior",
-                    symbol: supportsOnDevicePairing ? "checkmark.circle.fill" : "info.circle.fill",
-                    color: supportsOnDevicePairing ? .green : .orange)
-            infoRow("Helper StikJIT", value: "Ainda não integrado", symbol: "clock.fill", color: .orange)
-            infoRow("Confirmação real do JIT", value: "Pendente", symbol: "lock.fill", color: .gray)
+                    value: supportsOnDevicePairing ? "Requer integração PairableHost" : "Use arquivo de pareamento",
+                    symbol: "info.circle.fill", color: .orange)
+            infoRow("Arquivo RPPairing", value: pairingFileStored ? "Importado (não testado)" : "Não importado",
+                    symbol: pairingFileStored ? "checkmark.circle.fill" : "minus.circle",
+                    color: pairingFileStored ? .green : .gray)
+            infoRow("Helper StikJIT", value: "Ainda não integrado",
+                    symbol: "clock.fill", color: .orange)
+            infoRow("Confirmação real do JIT", value: "Pendente",
+                    symbol: "lock.fill", color: .gray)
         }
         .padding(18)
         .background(.white.opacity(0.07), in: RoundedRectangle(cornerRadius: 22, style: .continuous))
@@ -153,12 +222,11 @@ struct JITDashboardView: View {
 
     private var requirementsCard: some View {
         VStack(alignment: .leading, spacing: 13) {
-            sectionTitle("Componentes necessários", icon: "square.stack.3d.up")
-            requirement("Remote Pairing", detail: "Criar a identidade do host, anunciar Bonjour e receber o PIN.")
-            requirement("Pairing file seguro", detail: "Validar o plist e guardar as chaves no Keychain.")
-            requirement("StikJIT helper", detail: "Executar o helper em processo separado para anexar o debugger.")
-            requirement("Canal do dispositivo", detail: "Configurar o transporte suportado e verificar a conexão.")
-            requirement("JIT verificado", detail: "Só mostrar sucesso após confirmação do helper.")
+            sectionTitle("Próximas integrações", icon: "square.stack.3d.up")
+            requirement("Remote Pairing", detail: "Implementar o host PairableHost e o anúncio Bonjour no iOS 27+.")
+            requirement("Helper StikJIT", detail: "Adicionar o framework compatível e a comunicação com o helper.")
+            requirement("Canal do dispositivo", detail: "Configurar e verificar o transporte suportado.")
+            requirement("JIT verificado", detail: "Só mostrar sucesso após o helper confirmar o processo selecionado.")
         }
         .padding(18)
         .background(.white.opacity(0.07), in: RoundedRectangle(cornerRadius: 22, style: .continuous))
@@ -167,12 +235,11 @@ struct JITDashboardView: View {
 
     private var safetyNote: some View {
         Label {
-            Text("O Modo Desenvolvedor não ativa JIT. O iOS também não permite que apps comuns ativem essa opção protegida automaticamente.")
+            Text("O arquivo é armazenado com proteção ThisDeviceOnly no Keychain. O Modo Desenvolvedor é separado e precisa ser habilitado pelo usuário nas Ajustes.")
                 .font(.caption)
                 .foregroundStyle(.white.opacity(0.68))
         } icon: {
-            Image(systemName: "info.circle.fill")
-                .foregroundStyle(.cyan)
+            Image(systemName: "info.circle.fill").foregroundStyle(.cyan)
         }
         .padding(14)
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -209,6 +276,36 @@ struct JITDashboardView: View {
                 Text(detail).font(.caption).foregroundStyle(.white.opacity(0.65))
                     .fixedSize(horizontal: false, vertical: true)
             }
+        }
+    }
+
+    private func refreshPairingState() {
+        pairingFileStored = (try? PairingFileStore.load()) != nil
+    }
+
+    private func importPairingFile(from url: URL) {
+        let granted = url.startAccessingSecurityScopedResource()
+        defer { if granted { url.stopAccessingSecurityScopedResource() } }
+        do {
+            let data = try Data(contentsOf: url, options: [.mappedIfSafe])
+            try PairingFileStore.save(data)
+            pairingFileStored = true
+            showToast(title: "Arquivo protegido",
+                      message: "O plist foi validado e salvo no Keychain deste iPhone. A compatibilidade com StikJIT ainda não foi testada.")
+        } catch {
+            showToast(title: "Não foi possível importar",
+                      message: error.localizedDescription)
+        }
+    }
+
+    private func deletePairingFile() {
+        do {
+            try PairingFileStore.delete()
+            pairingFileStored = false
+            showToast(title: "Arquivo apagado",
+                      message: "A credencial de pareamento foi removida do Keychain.")
+        } catch {
+            showToast(title: "Falha ao apagar", message: error.localizedDescription)
         }
     }
 
