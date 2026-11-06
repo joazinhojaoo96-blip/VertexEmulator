@@ -1,0 +1,90 @@
+name: Vertex Windows Runtime
+
+on:
+  push:
+    branches:
+      - feature/madeira-runtime-integration
+  workflow_dispatch:
+  workflow_call:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: vertex-windows-runtime-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-runtime:
+    name: Build, validate and export executable runtime
+    runs-on: macos-26
+    timeout-minutes: 360
+    steps:
+      - name: Checkout Vertex and pinned runtime sources
+        uses: actions/checkout@v5
+        with:
+          submodules: recursive
+          fetch-depth: 1
+
+      - name: Restore verified runtime and compiler caches
+        uses: actions/cache@v4
+        with:
+          path: |
+            Vendor/Madeira/.runtime-cache
+            Vendor/Madeira/toolchains/llvm-host-build
+            Vendor/Madeira/toolchains/llvm-ios-build
+            Vendor/Madeira/toolchains/llvm-project
+            Vendor/Madeira/build
+            Vendor/Madeira/research/freetype
+            Vendor/Madeira/build/freetype-ios
+          key: vertex-madeira-${{ runner.os }}-xcode26-${{ hashFiles('.gitmodules', 'Vendor/Madeira/.gitmodules', 'Vendor/Madeira/tools/build/runtime-components.json', 'Vendor/Madeira/tools/build/ci-input-key.sh') }}-${{ hashFiles('Vendor/Madeira/**/CMakeLists.txt', 'Vendor/Madeira/**/build.sh', 'Vendor/Madeira/tools/build/*.sh') }}
+          restore-keys: |
+            vertex-madeira-${{ runner.os }}-xcode26-
+
+      - name: Cache Homebrew downloads and LLVM-MinGW toolchain
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/Library/Caches/Homebrew
+            Vendor/Madeira/toolchains/llvm-mingw-20260421-ucrt-macos-universal
+          key: ${{ runner.os }}-vertex-deps-${{ hashFiles('Vendor/Madeira/.gitmodules', 'Vendor/Madeira/tools/build/setup-llvm-mingw.sh') }}
+          restore-keys: |
+            ${{ runner.os }}-vertex-deps-
+
+      - name: Enable verified runtime component reuse
+        run: echo "MADEIRA_RUNTIME_REUSE=1" >> "$GITHUB_ENV"
+
+      - name: Show Apple build environment
+        run: |
+          sw_vers
+          xcodebuild -version
+          xcrun --sdk iphoneos --show-sdk-version
+          rustc --version
+          cargo --version
+
+      - name: Validate branding and runtime sources
+        run: |
+          python3 -m py_compile tools/brand-madeira-for-vertex.py tools/patch-dxmt-metal-atomic.py
+          python3 tools/brand-madeira-for-vertex.py --dry-run
+          test -f Vendor/Madeira/tools/build-ipa.sh
+          test -f Vendor/Madeira/LICENSE
+          test -f Vendor/Madeira/LICENSE-EXCEPTION.md
+          git -C Vendor/Madeira submodule status --recursive
+
+      - name: Apply guarded DXMT Metal compatibility patch
+        run: python3 tools/patch-dxmt-metal-atomic.py
+
+      - name: Build and export Vertex runtime IPA
+        env:
+          JOBS: 4
+          MADEIRA_RUNTIME_REUSE: 1
+        run: ./tools/build-vertex-ipa.sh
+
+      - name: Upload executable Vertex IPA
+        uses: actions/upload-artifact@v4
+        with:
+          name: Vertex-Windows-Runtime-IPA
+          path: dist/Vertex.ipa
+          if-no-files-found: error
+          retention-days: 14
+          compression-level: 0

@@ -1,28 +1,37 @@
 # Vertex
 
-Aplicativo iOS SwiftUI e companheiro Vertex Runner para Windows.
+O Vertex usa o runtime Madeira como núcleo de execução de programas Windows no iPhone. A interface SwiftUI antiga deste repositório apenas importava e armazenava arquivos .exe; ela não executava programas Windows e não é o aplicativo de distribuição.
 
-## Pair Vertex (pareamento real na rede local)
+## Build oficial com execução Windows
 
-1. No Windows, instale Python 3 e abra a pasta `VertexRunner`.
-2. Execute:
-   ```powershell
-   py -m pip install -r requirements.txt
-   py VertexRunner.py
-   ```
-3. Autorize Python no Firewall do Windows para redes privadas, se solicitado.
-4. No iPhone e no Windows, conecte-se à mesma rede Wi-Fi.
-5. Abra Vertex > Pair Vertex, selecione o computador encontrado e digite o código de 6 dígitos mostrado no Windows.
+O IPA de distribuição é compilado a partir do projeto nativo do runtime em Vendor/Madeira/app/Madeira.xcodeproj, com identidade Vertex. Não use o IPA do antigo target XcodeGen Vertex.xcodeproj: ele não contém Wine/FEX.
 
-O iOS perguntará se o Vertex pode encontrar dispositivos na rede local. Permita para usar a descoberta Bonjour.
+Em macOS com Xcode e Homebrew:
 
-## Modo Desenvolvedor
+    git clone --recurse-submodules https://github.com/joazinhoja96-blip/VertexEmulator.git
+    cd VertexEmulator
+    ./tools/build-vertex-ipa.sh
 
-O iOS não permite que um app de terceiros ative Modo Desenvolvedor nem navegue diretamente até essa seção protegida. A ativação deve ser feita manualmente em Ajustes > Privacidade e Segurança > Modo Desenvolvedor.
+O resultado validado é dist/Vertex.ipa. O script verifica as fontes, aplica nome/ícone/bundle ID/URL scheme Vertex de forma idempotente, compila o runtime nativo e valida o IPA antes de exportar.
 
-## Limitações atuais
+A compilação iOS exige macOS/Xcode. No Windows, edite o código e use GitHub Actions; não tente executar o build nativo localmente.
 
-- O pareamento valida o código com o Vertex Runner por conexão TCP na rede local.
-- A importação de .exe apenas guarda/mostra o arquivo no app. iOS não executa executáveis Windows nativamente.
-- Os botões de preparação e início ainda são protótipos; o pareamento não significa que a execução remota esteja implementada.
-- Use apenas em uma rede privada e confiável.
+## Como executar um programa
+
+1. Instale o IPA do workflow Vertex Windows Runtime.
+2. Configure JIT conforme as instruções do app. JIT só está pronto quando o helper confirmar o processo e o estado real.
+3. Copie a pasta completa do programa/jogo para o armazenamento do app usando Arquivos, conforme o guia de biblioteca do runtime.
+4. Na biblioteca, adicione o executável dessa pasta e toque em Play.
+
+A compatibilidade varia por programa. Nem todo jogo Windows funciona; dependências como Visual C++/.NET e APIs gráficas podem ser necessárias. O runtime executa localmente no iPhone. O Vertex Runner Python é apenas um handshake LAN e não participa da execução.
+
+## Componentes
+
+- Vendor/Madeira: submódulo upstream fixado em commit revisado. Não faça commit de alterações internas nele sem revisar licença e origem.
+- tools/brand-madeira-for-vertex.py: overlay idempotente de identidade Vertex.
+- tools/build-vertex-ipa.sh: entrada oficial para compilar, validar e exportar dist/Vertex.ipa.
+- Vertex/ e VertexRunner/: protótipo SwiftUI/pareamento LAN legado; não são o motor Windows.
+
+## Licenças
+
+Madeira é GPL-3.0-or-later com a Madeira Converter Exception. Wine, FEX, DXMT, StikJIT e demais componentes mantêm suas próprias licenças. Consulte os avisos em Vendor/Madeira antes de redistribuir.
