@@ -104,6 +104,9 @@ struct ContentView: View {
                 .navigationTitle("Vertex")
             }
             .tabItem { Label("Conexão", systemImage: "bolt.horizontal.circle.fill") }
+
+            JITDashboardView()
+                .tabItem { Label("JIT", systemImage: "bolt.fill") }
         }
         .tint(.purple)
         .fileImporter(isPresented: $showingImporter, allowedContentTypes: [.windowsExecutable]) { result in
