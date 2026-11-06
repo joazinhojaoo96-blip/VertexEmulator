@@ -34,3 +34,17 @@ O iOS não permite que um app de terceiros ative Modo Desenvolvedor automaticame
 - A importação de .exe apenas guarda/mostra o arquivo no app. iOS não executa executáveis Windows nativamente.
 - O helper StikJIT e a confirmação real de JIT ainda não estão integrados.
 - Use apenas em uma rede privada e confiável.
+
+## Motor de execução Windows (em desenvolvimento)
+
+A branch `feature/madeira-runtime-integration` adiciona o código-fonte do
+[Madeira](https://github.com/willfaust/Madeira) como submódulo em
+`Vendor/Madeira`, para integrar FEX-Emu, Wine ARM64EC, DXMT/Metal e o suporte
+de JIT. Consulte [o plano de integração](docs/MADEIRA-RUNTIME-INTEGRATION.md).
+
+**Estado atual:** isso ainda não habilita a execução de `.exe` no app Vertex
+atual. O submódulo e a compilação do runtime são a primeira etapa; a interface
+Vertex, o ciclo de inicialização e a validação em iPhone ainda precisam ser
+integrados. O workflow `Vertex Madeira Runtime Build` compila o app de
+referência Madeira para validar o motor; o IPA desse workflow não é uma versão
+final do Vertex.
