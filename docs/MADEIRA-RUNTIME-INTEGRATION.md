@@ -16,8 +16,8 @@ The target is on-device execution inside one iOS process, not a fake EXE launche
 ## Integration phases
 
 ### Phase 0 — Source and licensing baseline
-- [ ] Pin Madeira to a reviewed commit and initialize its nested submodules.
-- [ ] Preserve upstream notices, license texts and the Madeira Converter Exception.
+- [x] Pin Madeira to a reviewed commit; the build workflow initializes nested submodules.
+- [x] Preserve upstream notices, license texts and the Madeira Converter Exception through the source submodule.
 - [ ] Record every local change and its upstream provenance.
 - [ ] Confirm combined-work distribution complies with GPL-3.0-or-later and all component licenses.
 
