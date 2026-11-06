@@ -1,0 +1,63 @@
+name: Vertex Madeira Runtime Build
+
+on:
+  push:
+    branches:
+      - feature/madeira-runtime-integration
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: vertex-madeira-runtime-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build-runtime:
+    name: Build and validate Windows runtime
+    runs-on: macos-26
+    timeout-minutes: 360
+    steps:
+      - name: Checkout Vertex and pinned Madeira source
+        uses: actions/checkout@v5
+        with:
+          submodules: recursive
+          fetch-depth: 0
+
+      - name: Show Apple build environment
+        run: |
+          sw_vers
+          xcodebuild -version
+          xcrun --sdk iphoneos --show-sdk-version
+          rustc --version
+          cargo --version
+
+      - name: Verify pinned runtime source
+        run: |
+          test -f Vendor/Madeira/tools/build-ipa.sh
+          test -f Vendor/Madeira/LICENSE
+          test -f Vendor/Madeira/LICENSE-EXCEPTION.md
+          git -C Vendor/Madeira submodule status --recursive
+          git -C Vendor/Madeira rev-parse HEAD
+
+      - name: Build Madeira runtime and iOS application
+        working-directory: Vendor/Madeira
+        env:
+          JOBS: 4
+        run: ./tools/build-ipa.sh
+
+      - name: Validate resulting IPA
+        run: |
+          test -s Vendor/Madeira/dist/Madeira.ipa
+          unzip -tq Vendor/Madeira/dist/Madeira.ipa
+          python3 Vendor/Madeira/tools/build/runtime-components.py ipa Vendor/Madeira/dist/Madeira.ipa
+
+      - name: Upload runtime validation IPA
+        uses: actions/upload-artifact@v4
+        with:
+          name: Vertex-Madeira-runtime-validation
+          path: Vendor/Madeira/dist/Madeira.ipa
+          if-no-files-found: error
+          retention-days: 7
+          compression-level: 0
