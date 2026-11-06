@@ -2,20 +2,32 @@ import SwiftUI
 import UniformTypeIdentifiers
 import Network
 
-struct WindowsProgram: Identifiable, Hashable {
-    enum State: String { case imported = "Importado", preparing = "Preparando", ready = "Pronto", running = "Em execução" }
-    let id = UUID()
+struct WindowsProgram: Identifiable, Hashable, Codable {
+    enum State: String, Codable {
+        case imported = "Importado"
+    }
+
+    let id: UUID
     let name: String
     var state: State
+
+    init(id: UUID = UUID(), name: String, state: State = .imported) {
+        self.id = id
+        self.name = name
+        self.state = state
+    }
 }
 
 struct ContentView: View {
+    @Environment(\.scenePhase) private var scenePhase
+    @AppStorage("vertex.programs.v1") private var savedPrograms = "[]"
+    @AppStorage("vertex.runner.paired.v1") private var paired = false
+    @AppStorage("vertex.runner.name.v1") private var runnerName = ""
+
     @State private var programs: [WindowsProgram] = []
     @State private var selectedProgram: WindowsProgram?
     @State private var showingImporter = false
     @State private var showingPair = false
-    @State private var paired = false
-    @State private var runnerName = ""
 
     var body: some View {
         TabView {
@@ -25,104 +37,168 @@ struct ContentView: View {
                         ContentUnavailableView {
                             Image("VertexMark").resizable().scaledToFit().frame(width: 72, height: 72)
                         } description: {
-                            Text("Adicione um .exe para aparecer aqui.")
+                            Text("Importe um executável Windows para mantê-lo na sua biblioteca.")
                         } actions: {
-                            Button("Adicionar .exe") { showingImporter = true }.buttonStyle(.borderedProminent)
+                            Button("Importar .exe") { showingImporter = true }
+                                .buttonStyle(.borderedProminent)
                         }
                     } else {
-                        List(programs) { program in
-                            Button { selectedProgram = program } label: { ProgramRow(program: program) }
+                        List {
+                            ForEach(programs) { program in
+                                Button { selectedProgram = program } label: {
+                                    ProgramRow(program: program)
+                                }
                                 .buttonStyle(.plain)
+                            }
+                            .onDelete(perform: deletePrograms)
                         }
                     }
                 }
-                .navigationTitle("Programas")
-                .toolbar { Button { showingImporter = true } label: { Label("Adicionar", systemImage: "plus.circle.fill") } }
+                .navigationTitle("Biblioteca")
+                .toolbar {
+                    ToolbarItem(placement: .topBarLeading) {
+                        if !programs.isEmpty { EditButton() }
+                    }
+                    ToolbarItem(placement: .topBarTrailing) {
+                        Button { showingImporter = true } label: {
+                            Label("Importar", systemImage: "plus.circle.fill")
+                        }
+                    }
+                }
             }
-            .tabItem { Label("Programas", systemImage: "square.grid.2x2.fill") }
+            .tabItem { Label("Biblioteca", systemImage: "square.grid.2x2.fill") }
 
-            VStack(spacing: 18) {
-                Image("VertexMark").resizable().scaledToFit().frame(width: 112, height: 112)
-                Text(paired ? "Vertex conectado" : "Conecte seu Vertex Runner").font(.title3.bold())
-                Text(paired ? "Conectado a \(runnerName).": "Encontre o Runner no Windows pela rede Wi-Fi local.")
-                    .foregroundStyle(.secondary).multilineTextAlignment(.center).padding(.horizontal, 32)
-                Button(paired ? "Conectado" : "Pair Vertex") { showingPair = true }
-                    .buttonStyle(.borderedProminent).controlSize(.large)
+            NavigationStack {
+                VStack(spacing: 18) {
+                    Image("VertexMark").resizable().scaledToFit().frame(width: 104, height: 104)
+                    Text(paired ? "Runner pareado" : "Conecte seu Runner")
+                        .font(.title3.bold())
+                    Text(paired
+                         ? "Conexão autorizada com \(runnerName)."
+                         : "Encontre o Vertex Runner no Windows pela rede local.")
+                        .foregroundStyle(.secondary)
+                        .multilineTextAlignment(.center)
+                        .padding(.horizontal, 28)
+                    Button(paired ? "Gerenciar conexão" : "Parear computador") {
+                        showingPair = true
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .controlSize(.large)
+                    if paired {
+                        Button("Desconectar", role: .destructive) {
+                            paired = false
+                            runnerName = ""
+                        }
+                    }
+                    Spacer()
+                    Label("O pareamento não executa programas Windows.", systemImage: "info.circle")
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                        .multilineTextAlignment(.center)
+                        .padding()
+                }
+                .padding(.top, 28)
+                .navigationTitle("Vertex")
             }
-            .tabItem { Label("Vertex", systemImage: "bolt.horizontal.circle.fill") }
+            .tabItem { Label("Conexão", systemImage: "bolt.horizontal.circle.fill") }
         }
         .tint(.purple)
         .fileImporter(isPresented: $showingImporter, allowedContentTypes: [.windowsExecutable]) { result in
-            guard case let .success(file) = result else { return }
-            programs.insert(WindowsProgram(name: file.deletingPathExtension().lastPathComponent, state: .imported), at: 0)
+            guard case let .success(url) = result else { return }
+            let granted = url.startAccessingSecurityScopedResource()
+            defer { if granted { url.stopAccessingSecurityScopedResource() } }
+            let name = url.deletingPathExtension().lastPathComponent
+            guard !programs.contains(where: { $0.name == name }) else { return }
+            programs.insert(WindowsProgram(name: name), at: 0)
+            persistPrograms()
         }
         .sheet(item: $selectedProgram) { program in
-            ProgramSheet(paired: paired, program: program) { updated in
-                guard let index = programs.firstIndex(where: { $0.id == updated.id }) else { return }
-                programs[index] = updated
-                selectedProgram = updated
-            }
+            ProgramSheet(program: program)
         }
         .sheet(isPresented: $showingPair) {
             PairSheet(isPaired: $paired, runnerName: $runnerName)
         }
+        .onAppear(perform: restorePrograms)
+        .onChange(of: scenePhase) { _, phase in
+            // Keep user data and the pairing state in storage. Network browsing is
+            // restarted by PairSheet when the app becomes active again.
+            if phase == .active { restorePrograms() }
+        }
+    }
+
+    private func restorePrograms() {
+        guard let data = savedPrograms.data(using: .utf8),
+              let decoded = try? JSONDecoder().decode([WindowsProgram].self, from: data) else {
+            programs = []
+            return
+        }
+        programs = decoded
+    }
+
+    private func persistPrograms() {
+        guard let data = try? JSONEncoder().encode(programs),
+              let value = String(data: data, encoding: .utf8) else { return }
+        savedPrograms = value
+    }
+
+    private func deletePrograms(at offsets: IndexSet) {
+        programs.remove(atOffsets: offsets)
+        persistPrograms()
     }
 }
 
 private struct ProgramRow: View {
     let program: WindowsProgram
+
     var body: some View {
         HStack(spacing: 13) {
-            Image("VertexMark").resizable().scaledToFit().frame(width: 52, height: 52)
+            Image("VertexMark").resizable().scaledToFit().frame(width: 48, height: 48)
             VStack(alignment: .leading, spacing: 4) {
                 Text(program.name).font(.headline)
-                Text("Executável Windows").font(.caption).foregroundStyle(.secondary)
+                Text("Executável Windows • armazenado na biblioteca")
+                    .font(.caption).foregroundStyle(.secondary)
             }
             Spacer()
-            Text(program.state.rawValue).font(.caption.weight(.semibold)).foregroundStyle(.purple)
+            Text(program.state.rawValue)
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(.purple)
         }
+        .padding(.vertical, 4)
     }
 }
 
 private struct ProgramSheet: View {
     @Environment(\.dismiss) private var dismiss
-    let paired: Bool
-    @State var program: WindowsProgram
-    let onChange: (WindowsProgram) -> Void
+    let program: WindowsProgram
+
     var body: some View {
         NavigationStack {
-            VStack(spacing: 22) {
-                Image("VertexMark").resizable().scaledToFit().frame(width: 112, height: 112)
+            VStack(spacing: 18) {
+                Image("VertexMark").resizable().scaledToFit().frame(width: 96, height: 96)
                 Text(program.name).font(.title2.bold())
-                Text(program.state.rawValue).foregroundStyle(.secondary)
-                Button("Baixar dependências") { prepare() }
-                    .buttonStyle(.bordered).disabled(program.state == .preparing)
-                Button("Iniciar") { program.state = .running; onChange(program) }
-                    .buttonStyle(.borderedProminent).controlSize(.large)
-                    .disabled(!paired || program.state != .ready)
-                if !paired { Text("Conecte o Vertex Runner para iniciar.").font(.caption).foregroundStyle(.secondary) }
+                Text("Arquivo importado")
+                    .foregroundStyle(.secondary)
+                ContentUnavailableView(
+                    "Execução ainda não implementada",
+                    systemImage: "pc",
+                    description: Text("O iPhone não executa arquivos .exe. O Vertex atualmente importa e organiza os arquivos e permite parear o Runner; o motor de execução remota ainda precisa ser desenvolvido.")
+                )
                 Spacer()
             }
-            .padding(.top, 34).padding(.horizontal, 24)
-            .navigationTitle("Programa").navigationBarTitleDisplayMode(.inline)
+            .padding(24)
+            .navigationTitle("Detalhes")
+            .navigationBarTitleDisplayMode(.inline)
             .toolbar { Button("Fechar") { dismiss() } }
-        }
-    }
-    private func prepare() {
-        program.state = .preparing
-        onChange(program)
-        Task {
-            try? await Task.sleep(nanoseconds: 1_200_000_000)
-            program.state = .ready
-            onChange(program)
         }
     }
 }
 
 private struct PairSheet: View {
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.scenePhase) private var scenePhase
     @Binding var isPaired: Bool
     @Binding var runnerName: String
+
     @State private var code = ""
     @State private var runners: [NWBrowser.Result] = []
     @State private var selected: NWBrowser.Result?
@@ -130,29 +206,32 @@ private struct PairSheet: View {
     @State private var connection: NWConnection?
     @State private var status = "Procurando Vertex Runner na rede local..."
     @State private var busy = false
+    @State private var requestID = UUID()
 
     var body: some View {
         NavigationStack {
             Form {
                 Section("1. Inicie no Windows") {
-                    Text("Execute o arquivo VertexRunner.py no computador. O iPhone e o Windows precisam estar na mesma rede Wi-Fi.")
-                    Text("O Runner exibirá um código de 6 dígitos.")
+                    Text("Execute VertexRunner.py no computador. Os dois dispositivos precisam estar na mesma rede Wi-Fi.")
+                    Text("O Runner exibirá um código temporário de 6 dígitos.")
                         .font(.caption).foregroundStyle(.secondary)
                 }
                 Section("2. Computador encontrado") {
                     if runners.isEmpty {
-                        Text("Procurando...").foregroundStyle(.secondary)
+                        HStack {
+                            ProgressView()
+                            Text("Procurando na rede local…").foregroundStyle(.secondary)
+                        }
                     } else {
                         ForEach(Array(runners.enumerated()), id: \.offset) { item in
                             let result = item.element
-                            Button {
-                                selected = result
-                            } label: {
+                            Button { selected = result } label: {
                                 HStack {
                                     Text(result.endpoint.debugDescription)
+                                        .lineLimit(2)
                                     Spacer()
                                     if selected?.endpoint.debugDescription == result.endpoint.debugDescription {
-                                        Image(systemName: "checkmark").foregroundStyle(.purple)
+                                        Image(systemName: "checkmark.circle.fill").foregroundStyle(.purple)
                                     }
                                 }
                             }
@@ -162,86 +241,157 @@ private struct PairSheet: View {
                 Section("3. Código de pareamento") {
                     TextField("Código de 6 dígitos", text: $code)
                         .keyboardType(.numberPad)
-                    Button(busy ? "Conectando..." : "Conectar") { pair() }
+                        .textContentType(.oneTimeCode)
+                        .onChange(of: code) { _, value in
+                            code = String(value.filter(\.isNumber).prefix(6))
+                        }
+                    Button(busy ? "Conectando…" : "Conectar") { pair() }
                         .disabled(busy || selected == nil || code.count != 6)
                 }
                 Section("Status") {
                     Text(status).font(.footnote)
                 }
-                Section("Modo Desenvolvedor do iPhone") {
-                    Text("O iOS não permite que aplicativos ativem esse modo automaticamente. Ative manualmente em Ajustes → Privacidade e Segurança → Modo Desenvolvedor e reinicie o iPhone se solicitado.")
+                Section("Modo Desenvolvedor") {
+                    Text("O Vertex não ativa esse recurso. Se necessário para desenvolvimento, habilite manualmente em Ajustes → Privacidade e Segurança → Modo Desenvolvedor.")
                         .font(.footnote)
                 }
             }
-            .navigationTitle("Pair Vertex")
-            .toolbar { Button("Fechar") { browser?.cancel(); dismiss() } }
-            .onAppear { startDiscovery() }
-            .onDisappear { browser?.cancel(); connection?.cancel() }
+            .navigationTitle("Parear Runner")
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button("Fechar") { stopNetworking(); dismiss() }
+                }
+            }
+            .onAppear(perform: startDiscovery)
+            .onDisappear(perform: stopNetworking)
+            .onChange(of: scenePhase) { _, phase in
+                if phase == .active {
+                    startDiscovery()
+                } else if phase == .background || phase == .inactive {
+                    // iOS suspends network activity in the background. Tear down
+                    // transient browsing and restart cleanly on foreground.
+                    stopNetworking()
+                    status = "Pausado. A descoberta será retomada ao voltar ao app."
+                }
+            }
         }
+    }
+
+    private func stopNetworking() {
+        browser?.cancel()
+        browser = nil
+        connection?.cancel()
+        connection = nil
+        busy = false
     }
 
     private func startDiscovery() {
-        let b = NWBrowser(for: .bonjour(type: "_vertex-runner._tcp", domain: "local."), using: .tcp)
-        browser = b
-        b.browseResultsChangedHandler = { results, _ in
+        guard browser == nil else { return }
+        status = "Procurando Vertex Runner na rede local…"
+        let newBrowser = NWBrowser(
+            for: .bonjour(type: "_vertex-runner._tcp", domain: "local."),
+            using: .tcp
+        )
+        browser = newBrowser
+        newBrowser.browseResultsChangedHandler = { results, _ in
             DispatchQueue.main.async {
                 runners = Array(results)
-                if selected == nil { selected = results.first }
-                status = results.isEmpty ? "Nenhum Runner encontrado. Confira a rede e o firewall do Windows." : "Runner encontrado. Digite o código mostrado no Windows."
+                if let selected,
+                   !results.contains(where: { $0.endpoint.debugDescription == selected.endpoint.debugDescription }) {
+                    self.selected = nil
+                }
+                if self.selected == nil { self.selected = results.first }
+                status = results.isEmpty
+                    ? "Nenhum Runner encontrado. Confira Wi-Fi e firewall do Windows."
+                    : "Runner encontrado. Digite o código exibido no Windows."
             }
         }
-        b.stateUpdateHandler = { state in
+        newBrowser.stateUpdateHandler = { state in
             if case .failed(let error) = state {
-                DispatchQueue.main.async { status = "Falha na descoberta: \(error.localizedDescription)" }
+                DispatchQueue.main.async {
+                    status = "Falha na descoberta: \(error.localizedDescription)"
+                    browser?.cancel()
+                    browser = nil
+                }
             }
         }
-        b.start(queue: .main)
+        newBrowser.start(queue: .main)
     }
 
     private func pair() {
-        guard let selected else { return }
+        guard let selected, !busy else { return }
         busy = true
-        status = "Validando código..."
+        status = "Conectando e validando o código…"
+        let attempt = UUID()
+        requestID = attempt
         let conn = NWConnection(to: selected.endpoint, using: .tcp)
         connection = conn
         conn.stateUpdateHandler = { state in
             switch state {
             case .ready:
-                let payload = try? JSONSerialization.data(withJSONObject: ["code": code])
-                guard let payload else { return }
-                let body = "POST /pair HTTP/1.1\r\nHost: vertex-runner\r\nContent-Type: application/json\r\nContent-Length: \(payload.count)\r\nConnection: close\r\n\r\n"
-                conn.send(content: Data(body.utf8) + payload, completion: .contentProcessed { error in
+                guard requestID == attempt else { conn.cancel(); return }
+                guard let payload = try? JSONSerialization.data(withJSONObject: ["code": code]) else {
+                    finishFailure("Não foi possível preparar a solicitação.", attempt: attempt)
+                    return
+                }
+                let headers = "POST /pair HTTP/1.1\r\nHost: vertex-runner\r\nContent-Type: application/json\r\nContent-Length: \(payload.count)\r\nConnection: close\r\n\r\n"
+                conn.send(content: Data(headers.utf8) + payload, completion: .contentProcessed { error in
                     if let error {
-                        DispatchQueue.main.async { busy = false; status = "Falha ao enviar: \(error.localizedDescription)" }
-                        conn.cancel()
+                        finishFailure("Falha ao enviar: \(error.localizedDescription)", attempt: attempt)
                     } else {
-                        conn.receive(minimumIncompleteLength: 1, maximumLength: 8192) { data, _, _, receiveError in
-                            let response = data.flatMap { String(data: $0, encoding: .utf8) } ?? ""
-                            DispatchQueue.main.async {
-                                busy = false
-                                if response.contains("200 OK") && response.contains("\"ok\": true") {
-                                    isPaired = true
-                                    runnerName = selected.endpoint.debugDescription
-                                    status = "Pareamento concluído!"
-                                    conn.cancel()
-                                    dismiss()
-                                } else if response.contains("401") {
-                                    status = "Código incorreto. Confira o código no Windows."
-                                } else {
-                                    status = receiveError.map { "Erro de conexão: \($0.localizedDescription)" } ?? "O Runner recusou o pareamento. Tente novamente."
-                                }
-                            }
-                            conn.cancel()
-                        }
+                        receiveResponse(from: conn, buffer: Data(), attempt: attempt)
                     }
                 })
             case .failed(let error):
-                DispatchQueue.main.async { busy = false; status = "Não foi possível conectar: \(error.localizedDescription)" }
-                conn.cancel()
-            default: break
+                finishFailure("Não foi possível conectar: \(error.localizedDescription)", attempt: attempt)
+            default:
+                break
             }
         }
         conn.start(queue: .main)
+    }
+
+    private func receiveResponse(from conn: NWConnection, buffer: Data, attempt: UUID) {
+        conn.receive(minimumIncompleteLength: 1, maximumLength: 4096) { data, _, isComplete, error in
+            var received = buffer
+            if let data { received.append(data) }
+            let response = String(data: received, encoding: .utf8) ?? ""
+            if response.contains("\r\n\r\n") || isComplete || error != nil {
+                DispatchQueue.main.async {
+                    guard requestID == attempt else { conn.cancel(); return }
+                    busy = false
+                    if response.contains("200 OK") && response.contains("\"ok\": true") {
+                        isPaired = true
+                        runnerName = selected?.endpoint.debugDescription ?? "Vertex Runner"
+                        status = "Pareamento concluído."
+                        connection = nil
+                        conn.cancel()
+                        dismiss()
+                    } else if response.contains("401") {
+                        status = "Código incorreto. Confira o código no Windows."
+                        connection = nil
+                        conn.cancel()
+                    } else {
+                        status = error.map { "Erro de conexão: \($0.localizedDescription)" }
+                            ?? "Resposta incompleta do Runner. Tente novamente."
+                        connection = nil
+                        conn.cancel()
+                    }
+                }
+            } else {
+                receiveResponse(from: conn, buffer: received, attempt: attempt)
+            }
+        }
+    }
+
+    private func finishFailure(_ message: String, attempt: UUID) {
+        DispatchQueue.main.async {
+            guard requestID == attempt else { return }
+            busy = false
+            status = message
+            connection?.cancel()
+            connection = nil
+        }
     }
 }
 
