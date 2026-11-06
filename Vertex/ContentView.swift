@@ -356,11 +356,21 @@ private struct PairSheet: View {
             var received = buffer
             if let data { received.append(data) }
             let response = String(data: received, encoding: .utf8) ?? ""
-            if response.contains("\r\n\r\n") || isComplete || error != nil {
+            let parts = response.components(separatedBy: "\r\n\r\n")
+            let headers = parts.first ?? ""
+            let body = parts.count > 1 ? parts.dropFirst().joined(separator: "\r\n\r\n") : ""
+            let expectedLength = headers
+                .components(separatedBy: "\r\n")
+                .first(where: { $0.lowercased().hasPrefix("content-length:") })
+                .flatMap { Int($0.dropFirst("content-length:".count).trimmingCharacters(in: .whitespaces)) }
+            let bodyComplete = expectedLength.map { body.utf8.count >= $0 } ?? !body.isEmpty
+            let headersComplete = parts.count > 1
+
+            if (headersComplete && bodyComplete) || isComplete || error != nil {
                 DispatchQueue.main.async {
                     guard requestID == attempt else { conn.cancel(); return }
                     busy = false
-                    if response.contains("200 OK") && response.contains("\"ok\": true") {
+                    if response.contains("200 OK") && body.contains("\\"ok\\": true") {
                         isPaired = true
                         runnerName = selected?.endpoint.debugDescription ?? "Vertex Runner"
                         status = "Pareamento concluído."
@@ -372,7 +382,7 @@ private struct PairSheet: View {
                         connection = nil
                         conn.cancel()
                     } else {
-                        status = error.map { "Erro de conexão: \($0.localizedDescription)" }
+                        status = error.map { "Erro de conexão: \\($0.localizedDescription)" }
                             ?? "Resposta incompleta do Runner. Tente novamente."
                         connection = nil
                         conn.cancel()
