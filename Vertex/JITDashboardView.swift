@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 
 /// Honest JIT dashboard. A successful Runner handshake is deliberately not
 /// presented as JIT: the native Remote Pairing + StikJIT helper is a separate
@@ -143,7 +144,7 @@ struct JITDashboardView: View {
                     symbol: supportsOnDevicePairing ? "checkmark.circle.fill" : "info.circle.fill",
                     color: supportsOnDevicePairing ? .green : .orange)
             infoRow("Helper StikJIT", value: "Ainda não integrado", symbol: "clock.fill", color: .orange)
-            infoRow("Confirmação real do JIT", value: "Pendente", symbol: "lock.fill", color: .secondary)
+            infoRow("Confirmação real do JIT", value: "Pendente", symbol: "lock.fill", color: .gray)
         }
         .padding(18)
         .background(.white.opacity(0.07), in: RoundedRectangle(cornerRadius: 22, style: .continuous))
