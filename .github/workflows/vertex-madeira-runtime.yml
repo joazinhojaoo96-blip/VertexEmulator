@@ -1,25 +1,26 @@
-name: Vertex Madeira Runtime Build
+name: Vertex Windows Runtime
 
 on:
   push:
     branches:
       - feature/madeira-runtime-integration
   workflow_dispatch:
+  workflow_call:
 
 permissions:
   contents: read
 
 concurrency:
-  group: vertex-madeira-runtime-${{ github.ref }}
+  group: vertex-windows-runtime-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
   build-runtime:
-    name: Build and validate Windows runtime
+    name: Build, validate and export executable runtime
     runs-on: macos-26
     timeout-minutes: 360
     steps:
-      - name: Checkout Vertex and pinned Madeira source
+      - name: Checkout Vertex and pinned runtime sources
         uses: actions/checkout@v5
         with:
           submodules: recursive
@@ -37,11 +38,22 @@ jobs:
             Vendor/Madeira/research/freetype
             Vendor/Madeira/build/freetype-ios
           key: vertex-madeira-${{ runner.os }}-xcode26-${{ hashFiles('.gitmodules', 'Vendor/Madeira/.gitmodules', 'Vendor/Madeira/tools/build/runtime-components.json', 'Vendor/Madeira/tools/build/ci-input-key.sh') }}-${{ hashFiles('Vendor/Madeira/**/CMakeLists.txt', 'Vendor/Madeira/**/build.sh', 'Vendor/Madeira/tools/build/*.sh') }}
-          restore-keys:
+          restore-keys: |
             vertex-madeira-${{ runner.os }}-xcode26-
 
-      - name: Enable exact runtime component reuse
+      - name: Cache Homebrew downloads and LLVM-MinGW toolchain
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/Library/Caches/Homebrew
+            Vendor/Madeira/toolchains/llvm-mingw-20260421-ucrt-macos-universal
+          key: ${{ runner.os }}-vertex-deps-${{ hashFiles('Vendor/Madeira/.gitmodules', 'Vendor/Madeira/tools/build/setup-llvm-mingw.sh') }}
+          restore-keys: |
+            ${{ runner.os }}-vertex-deps-
+
+      - name: Enable verified runtime component reuse
         run: echo "MADEIRA_RUNTIME_REUSE=1" >> "$GITHUB_ENV"
+
       - name: Show Apple build environment
         run: |
           sw_vers
@@ -50,49 +62,29 @@ jobs:
           rustc --version
           cargo --version
 
-      - name: Verify pinned runtime source
+      - name: Validate branding and runtime sources
         run: |
+          python3 -m py_compile tools/brand-madeira-for-vertex.py tools/patch-dxmt-metal-atomic.py
+          python3 tools/brand-madeira-for-vertex.py --dry-run
           test -f Vendor/Madeira/tools/build-ipa.sh
           test -f Vendor/Madeira/LICENSE
           test -f Vendor/Madeira/LICENSE-EXCEPTION.md
           git -C Vendor/Madeira submodule status --recursive
-          git -C Vendor/Madeira rev-parse HEAD
 
-      - name: Apply Vertex bundle identity and app icon
-        run: python3 tools/brand-madeira-for-vertex.py
-
-      - name: Patch DXMT Metal atomic API compatibility
+      - name: Apply guarded DXMT Metal compatibility patch
         run: python3 tools/patch-dxmt-metal-atomic.py
 
-      - name: Build Vertex-branded runtime application
-        working-directory: Vendor/Madeira
+      - name: Build and export Vertex runtime IPA
         env:
           JOBS: 4
           MADEIRA_RUNTIME_REUSE: 1
-        run: ./tools/build-ipa.sh
+        run: ./tools/build-vertex-ipa.sh
 
-      - name: Validate resulting IPA
-        run: |
-          test -s Vendor/Madeira/dist/Madeira.ipa
-          unzip -tq Vendor/Madeira/dist/Madeira.ipa
-          python3 Vendor/Madeira/tools/build/runtime-components.py ipa Vendor/Madeira/dist/Madeira.ipa
-          python3 - <<'PY'
-          import plistlib
-          import zipfile
-          ipa = "Vendor/Madeira/dist/Madeira.ipa"
-          with zipfile.ZipFile(ipa) as archive:
-              info = plistlib.loads(archive.read("Payload/Madeira.app/Info.plist"))
-          assert info["CFBundleIdentifier"] == "com.vertex.emulator", info.get("CFBundleIdentifier")
-          assert info["CFBundleDisplayName"] == "Vertex", info.get("CFBundleDisplayName")
-          assert any("vertex" in item.get("CFBundleURLSchemes", []) for item in info.get("CFBundleURLTypes", []))
-          print("PASS: IPA bundle identity is Vertex")
-          PY
-
-      - name: Upload runtime validation IPA
+      - name: Upload executable Vertex IPA
         uses: actions/upload-artifact@v4
         with:
-          name: Vertex-runtime-engine-validation
-          path: Vendor/Madeira/dist/Madeira.ipa
+          name: Vertex-Windows-Runtime-IPA
+          path: dist/Vertex.ipa
           if-no-files-found: error
-          retention-days: 7
+          retention-days: 14
           compression-level: 0
