@@ -58,7 +58,12 @@ struct JITDashboardView: View {
             allowsMultipleSelection: false
         ) { result in
             switch result {
-            case .success(let url):
+            case .success(let urls):
+                guard let url = urls.first else {
+                    showToast(title: "Nenhum arquivo selecionado",
+                              message: "Selecione um arquivo de pareamento .plist.")
+                    return
+                }
                 importPairingFile(from: url)
             case .failure(let error):
                 showToast(title: "Importação cancelada",
