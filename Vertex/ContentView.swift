@@ -417,7 +417,7 @@ private struct PairSheet: View {
                         connection = nil
                         conn.cancel()
                     } else {
-                        status = error.map { "Erro de conexão: \\($0.localizedDescription)" }
+                        status = error.map { "Erro de conexão: \($0.localizedDescription)" }
                             ?? "Resposta incompleta do Runner. Tente novamente."
                         connection = nil
                         conn.cancel()
