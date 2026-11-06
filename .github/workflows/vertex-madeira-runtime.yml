@@ -41,7 +41,10 @@ jobs:
           git -C Vendor/Madeira submodule status --recursive
           git -C Vendor/Madeira rev-parse HEAD
 
-      - name: Build Madeira runtime and iOS application
+      - name: Apply Vertex bundle identity and app icon
+        run: python3 tools/brand-madeira-for-vertex.py
+
+      - name: Build Vertex-branded runtime application
         working-directory: Vendor/Madeira
         env:
           JOBS: 4
@@ -52,11 +55,22 @@ jobs:
           test -s Vendor/Madeira/dist/Madeira.ipa
           unzip -tq Vendor/Madeira/dist/Madeira.ipa
           python3 Vendor/Madeira/tools/build/runtime-components.py ipa Vendor/Madeira/dist/Madeira.ipa
+          python3 - <<'PY'
+          import plistlib
+          import zipfile
+          ipa = "Vendor/Madeira/dist/Madeira.ipa"
+          with zipfile.ZipFile(ipa) as archive:
+              info = plistlib.loads(archive.read("Payload/Madeira.app/Info.plist"))
+          assert info["CFBundleIdentifier"] == "com.vertex.emulator", info.get("CFBundleIdentifier")
+          assert info["CFBundleDisplayName"] == "Vertex", info.get("CFBundleDisplayName")
+          assert any("vertex" in item.get("CFBundleURLSchemes", []) for item in info.get("CFBundleURLTypes", []))
+          print("PASS: IPA bundle identity is Vertex")
+          PY
 
       - name: Upload runtime validation IPA
         uses: actions/upload-artifact@v4
         with:
-          name: Vertex-Madeira-runtime-validation
+          name: Vertex-runtime-engine-validation
           path: Vendor/Madeira/dist/Madeira.ipa
           if-no-files-found: error
           retention-days: 7
