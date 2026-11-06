@@ -16,6 +16,12 @@ Aplicativo iOS SwiftUI e companheiro Vertex Runner para Windows.
 
 O iOS perguntará se o Vertex pode encontrar dispositivos na rede local. Permita para usar a descoberta Bonjour.
 
+## Painel JIT
+
+O app inclui uma aba **JIT** com painel visual, compatibilidade do iOS, componentes pendentes e notificações em estilo toast. Este painel é uma base de interface/diagnóstico; ele **não ativa JIT**.
+
+O pareamento Python atual continua sendo apenas um handshake local com o Vertex Runner. O pareamento nativo Remote Pairing do iOS 27+ e a integração do helper StikJIT ainda precisam ser implementados e testados. Consulte [docs/NATIVE-JIT-IMPLEMENTATION.md](docs/NATIVE-JIT-IMPLEMENTATION.md) para os requisitos técnicos e critérios de conclusão.
+
 ## Modo Desenvolvedor
 
 O iOS não permite que um app de terceiros ative Modo Desenvolvedor nem navegue diretamente até essa seção protegida. A ativação deve ser feita manualmente em Ajustes > Privacidade e Segurança > Modo Desenvolvedor.
