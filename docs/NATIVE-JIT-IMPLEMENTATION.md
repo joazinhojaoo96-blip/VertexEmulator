@@ -1,53 +1,65 @@
-# Native JIT implementation plan
+# Native JIT implementation
 
-## Current state
+## Implemented in this branch
 
-The JIT tab is a diagnostic UI foundation only. It intentionally does not claim that JIT is enabled, and it does not treat the existing Vertex Runner PIN handshake as an Apple Remote Pairing session.
+- JIT dashboard with an explicit, honest status (it never claims JIT is active).
+- Import of an RPPairing property-list file through the iOS document picker.
+- Basic structural validation: bounded file size, valid property list, non-empty dictionary.
+- Pairing bytes are stored as an opaque secret in the iOS Keychain using
+  `kSecAttrAccessibleWhenUnlockedThisDeviceOnly`; they are not written to Documents
+  or printed to logs.
+- The user can replace or delete the saved pairing file.
 
-The current `VertexRunner.py` endpoint is a local HTTP code check. It is not the iOS 27 device-initiated Remote Pairing protocol and cannot produce an Apple RPPairing plist.
+The importer validates the plist container, not the private RPPairing schema or whether
+the record can successfully establish a device tunnel. Those checks require the
+matching helper/protocol library and a real device test.
 
-## Required native components
+## Still required for actual JIT
 
 1. **On-device Remote Pairing (iOS 27+)**
-   - Bind a temporary TCP listener on the iPhone.
-   - Publish the PairableHost Bonjour service with the required TXT records.
-   - Display the PIN from the protocol callback.
-   - Accept the device-initiated pairing and return the RPPairing plist.
-2. **Pairing-file validation and storage**
-   - Validate the plist structure and key sizes before accepting it.
-   - Store private pairing material in Keychain with a device-only accessibility class.
-   - Never print private keys or pairing-file bytes to logs.
-3. **JIT helper**
-   - Run the debugger helper in a separate process/extension; an app cannot synchronously debug itself.
-   - Integrate a compatible StikJIT build and its required frameworks.
-   - Verify the target process and report the helper's actual result.
-4. **Transport and device services**
-   - Implement only the supported device transport for the selected iOS versions.
-   - Check the required tunnel/route before attempting the helper.
-   - Treat refused, reset, timed-out, and unreachable connections as distinct errors.
-5. **UI state**
-   - Keep pairing, transport readiness, helper attachment, and confirmed JIT as separate states.
-   - Show success only after the helper confirms JIT for the selected process.
+   - Build and integrate a separately licensed `idevice::remote_pairing::PairableHost`
+     wrapper for the exact target architectures and iOS SDK.
+   - Bind a temporary TCP listener and publish
+     `_remotepairing-pairable-host._tcp` with the protocol TXT records.
+   - Display the PIN from the protocol callback and keep the host alive while the
+     user completes pairing in Settings.
+   - Save the returned RPPairing bytes through `PairingFileStore`.
+2. **StikJIT helper**
+   - Add a compatible StikJIT framework/helper as a separate target or embedded
+     helper process, with its own licensing and signing requirements.
+   - Define a narrow request/result interface; never treat a successful import or
+     pairing handshake as proof that JIT is enabled.
+3. **Transport**
+   - Integrate and verify the supported RSD/device transport for the selected iOS
+     version, with clear errors for missing tunnel, timeout, and refused connection.
+4. **Verified status**
+   - Select an authorized app process and show success only after the helper reports
+     a positive JIT result for that process.
 
-## Compatibility notes
+## Compatibility and platform limits
 
-- Madeira documents its in-app PairableHost flow for iOS 27 and later.
-- Older iOS versions need a separately supported pairing-file workflow; the iOS 27 flow must not be presented as universal.
-- Developer Mode is a separate iOS setting. An ordinary third-party app cannot silently enable it.
-- A successful PIN exchange is pairing, not JIT activation.
+- The on-device PairableHost flow is documented by the upstream implementation for
+  iOS 27 and later. It is not implemented in this branch yet.
+- Older iOS versions need a separately supported pairing-file workflow.
+- Developer Mode is separate; an ordinary third-party app cannot silently enable it.
+- Importing a file does not enable JIT.
 
-## Upstream reference and licensing
+## Licensing
 
-Madeira source: https://github.com/willfaust/Madeira
+No Madeira implementation source is copied into this branch. The PairableHost wrapper
+and StikJIT integration must be implemented from their respective upstream projects
+only after reviewing and complying with their licenses and notices. Madeira's
+RPPairing wrapper is GPL-3.0-or-later with a separate Converter Exception; StikJIT
+and idevice have their own licenses. Do not bundle a binary or port source without
+including the applicable notices and satisfying those terms.
 
-The inspected upstream files identify GPL-3.0-or-later plus a Madeira Converter Exception. Before copying or linking any upstream source, review the repository's complete license and exception, preserve notices, and satisfy all applicable terms. This branch does not copy Madeira implementation code.
+## Acceptance tests
 
-## Acceptance tests before calling this complete
-
-- iOS 27+ device can discover the in-app PairableHost service from Developer Mode settings.
-- PIN confirmation yields a valid RPPairing plist.
-- Pairing secrets are stored only in Keychain and are absent from logs.
-- The helper runs separately and attaches to a selected authorized process.
-- JIT success is shown only after a positive helper result.
-- Wrong PIN, replaced pairing, disabled VPN/transport, and timeout each show a distinct actionable notification.
-- iOS 26 and earlier show only a supported import workflow, never a false in-app-pairing promise.
+- A valid plist imports and is stored in Keychain.
+- A malformed plist, empty plist, and file larger than 1 MiB are rejected.
+- The secret is not present in Documents, UserDefaults, or application logs.
+- Replacing and deleting the credential work.
+- On iOS 27+, the PairableHost appears in Settings and completes pairing.
+- The helper establishes the supported transport and confirms JIT for a selected
+  process before the UI displays success.
+- iOS versions without on-device pairing never show that feature as available.
