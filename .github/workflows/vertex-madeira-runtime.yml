@@ -61,6 +61,9 @@ jobs:
       - name: Apply Vertex bundle identity and app icon
         run: python3 tools/brand-madeira-for-vertex.py
 
+      - name: Patch DXMT Metal atomic API compatibility
+        run: python3 tools/patch-dxmt-metal-atomic.py
+
       - name: Build Vertex-branded runtime application
         working-directory: Vendor/Madeira
         env:
